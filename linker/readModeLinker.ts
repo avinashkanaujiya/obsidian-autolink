@@ -146,6 +146,13 @@ export class GlossaryLinker extends MarkdownRenderChild {
                         // Additions are sorted by from position and after that by length, we want to keep longer additions
                         matches = VirtualMatch.filterOverlapping(matches, this.settings.onlyLinkOnce);
 
+                        // Keep only the first identical virtual link per line
+                        // inside the current rendered text node.
+                        matches = VirtualMatch.filterDuplicateLineMatches(
+                            matches,
+                            (match) => (text.slice(0, match.from).match(/\n/g) ?? []).length,
+                        );
+
                         const parent = childNode.parentElement;
                         let lastTo = 0;
 

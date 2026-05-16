@@ -79,6 +79,7 @@ These property names can be changed in the settings.
 
 #### Suppress multiple matching and matching to real links
 By default, the plugin will suppress several identical virtual link in the same note.
+Repeated identical matches on the same line are also collapsed to the first occurrence to reduce visual clutter.
 Furthermore, you can toggle to suppress the creation of virtual links to files, that are linked by real links in the current note. 
 
 #### Part matching

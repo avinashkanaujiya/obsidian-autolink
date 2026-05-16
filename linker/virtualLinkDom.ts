@@ -183,4 +183,21 @@ export class VirtualMatch {
         }
         return matches.filter((match) => !matchesToDelete.has(match.id));
     }
+
+    static filterDuplicateLineMatches(matches: VirtualMatch[], getLineNumber: (match: VirtualMatch) => number): VirtualMatch[] {
+        const seenKeys = new Set<string>();
+
+        return matches.filter((match) => {
+            const fileKey = match.files
+                .map((file) => file.path)
+                .sort()
+                .join('|');
+            const key = `${getLineNumber(match)}::${match.originText.toLocaleLowerCase()}::${fileKey}`;
+            if (seenKeys.has(key)) {
+                return false;
+            }
+            seenKeys.add(key);
+            return true;
+        });
+    }
 }

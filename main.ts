@@ -954,7 +954,7 @@ class LinkerSettingTab extends PluginSettingTab {
             // Toggle to only link once
             new Setting(containerEl)
                 .setName('Only link once')
-                .setDesc('If activated, there will not be several identical virtual links in the same note (Wikipedia style).')
+                .setDesc('If activated, there will not be several identical virtual links in the same note (Wikipedia style). Repeated identical matches on the same line are always collapsed to the first occurrence to reduce clutter.')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.onlyLinkOnce).onChange(async (value) => {
                         await this.plugin.updateSettings({ onlyLinkOnce: value });

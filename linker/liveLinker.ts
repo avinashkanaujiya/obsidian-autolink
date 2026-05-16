@@ -264,6 +264,13 @@ class AutoLinkerPlugin implements PluginValue {
             // Additions are sorted by from position and after that by length, we want to keep longer additions
             matches = VirtualMatch.filterOverlapping(matches, this.settings.onlyLinkOnce, excludedIntervalTree);
 
+            // Keep only the first identical virtual link per line to avoid
+            // clutter when the same term repeats several times in a sentence.
+            matches = VirtualMatch.filterDuplicateLineMatches(
+                matches,
+                (match) => view.state.doc.lineAt(match.from).number,
+            );
+
             // Store the files that are linked by a virtual link
             matches.forEach((addition) => addition.files.forEach((f) => alreadyLinkedFiles.add(f)));
 

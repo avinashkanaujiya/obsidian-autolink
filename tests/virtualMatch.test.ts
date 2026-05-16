@@ -56,9 +56,10 @@ function makeMatch(
     from: number,
     to: number,
     files: TFile[],
-    settings: LinkerPluginSettings = BASE_SETTINGS
+    settings: LinkerPluginSettings = BASE_SETTINGS,
+    originText = 'text'
 ): VirtualMatch {
-    return new VirtualMatch(id, 'text', from, to, files, false, false, settings);
+    return new VirtualMatch(id, originText, from, to, files, false, false, settings);
 }
 
 // ---------------------------------------------------------------------------
@@ -169,5 +170,42 @@ describe('VirtualMatch.filterOverlapping', () => {
         const f2 = makeFile('c.md');
         const matches = [makeMatch(0, 0, 5, [f1]), makeMatch(1, 5, 10, [f2])];
         expect(VirtualMatch.filterOverlapping(matches, false)).toHaveLength(2);
+    });
+});
+
+describe('VirtualMatch.filterDuplicateLineMatches', () => {
+    it('keeps only the first identical match per line', () => {
+        const f = makeFile('plato.md');
+        const matches = [
+            makeMatch(0, 0, 5, [f], BASE_SETTINGS, 'Plato'),
+            makeMatch(1, 12, 17, [f], BASE_SETTINGS, 'Plato'),
+            makeMatch(2, 24, 29, [f], BASE_SETTINGS, 'Plato'),
+        ];
+
+        const result = VirtualMatch.filterDuplicateLineMatches(matches, () => 1);
+        expect(result.map((match) => match.id)).toEqual([0]);
+    });
+
+    it('keeps repeated terms when they are on different lines', () => {
+        const f = makeFile('plato.md');
+        const matches = [
+            makeMatch(0, 0, 5, [f], BASE_SETTINGS, 'Plato'),
+            makeMatch(1, 12, 17, [f], BASE_SETTINGS, 'Plato'),
+        ];
+
+        const result = VirtualMatch.filterDuplicateLineMatches(matches, (match) => match.id);
+        expect(result.map((match) => match.id)).toEqual([0, 1]);
+    });
+
+    it('keeps different targets for the same text on one line', () => {
+        const f1 = makeFile('plato-philosopher.md');
+        const f2 = makeFile('plato-dialogues.md');
+        const matches = [
+            makeMatch(0, 0, 5, [f1], BASE_SETTINGS, 'Plato'),
+            makeMatch(1, 12, 17, [f2], BASE_SETTINGS, 'Plato'),
+        ];
+
+        const result = VirtualMatch.filterDuplicateLineMatches(matches, () => 1);
+        expect(result.map((match) => match.id)).toEqual([0, 1]);
     });
 });
