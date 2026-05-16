@@ -153,7 +153,8 @@ export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string
     }
 
     if (firstMark) {
-        // Give the browser one paint cycle before scrolling.
-        setTimeout(() => firstMark!.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+        // Scrolling is handled by the caller (main.ts) with an appropriate
+        // delay once the note has fully rendered — nothing to do here.
+        void firstMark; // keep the reference used above
     }
 }

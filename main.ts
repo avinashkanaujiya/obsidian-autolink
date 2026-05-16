@@ -149,19 +149,31 @@ export default class LinkerPlugin extends Plugin {
                 // Trigger a CM6 re-render so live-preview gets the decorations.
                 this.updateManager.update();
 
-                // Apply directly to already-rendered reading-mode DOM.
-                // A short delay lets the content finish rendering first.
+                // Apply marks to already-rendered reading-mode DOM (for notes
+                // that were already open in another leaf when the link was clicked).
+                // For freshly opened notes the reading-mode post-processor handles
+                // mark injection; this path handles the tab-switch case.
                 requestAnimationFrame(() => {
                     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
                     if (!view || view.file?.path !== file.path) return;
 
-                    const readingEl = view.contentEl.querySelector(
-                        '.markdown-reading-view, .markdown-preview-view'
-                    );
+                    // Prefer the internal previewMode container; fall back to
+                    // well-known CSS classes so we never apply to toolbar DOM.
+                    const readingEl: HTMLElement | null =
+                        (view as any).previewMode?.containerEl ??
+                        view.contentEl.querySelector('.markdown-reading-view') ??
+                        view.contentEl.querySelector('.markdown-preview-view');
+
                     if (readingEl instanceof HTMLElement) {
                         applyHighlightToDOM(readingEl, searchText);
                     }
                 });
+
+                // Scroll to the first highlighted occurrence.  We poll every
+                // 200 ms instead of a fixed delay so we adapt to varying render
+                // times (fast machine: done at 200 ms; slow / large note: might
+                // need a few retries).  Cap at 10 attempts (~2 s total).
+                this.attemptScroll(file.path, searchText, 0);
             })
         );
 
@@ -584,6 +596,65 @@ export default class LinkerPlugin extends Plugin {
                 });
             }
         }
+    }
+
+    /**
+     * Poll every 200 ms until either:
+     *   - Reading mode: a <mark class="autolink-highlight"> is in the DOM →
+     *     scroll to it via DOM scrollIntoView.
+     *   - Live preview / source: editor model is populated → scroll via the
+     *     Obsidian Editor API (editor.scrollIntoView), which works for CM6
+     *     regardless of whether decorations have rendered yet.
+     *
+     * We separate the two paths because editor.scrollIntoView() targets the
+     * hidden CM6 editor in reading mode and has no visible effect there;
+     * likewise, <mark> elements don't exist in live-preview mode.
+     *
+     * Retries up to MAX_ATTEMPTS × INTERVAL_MS ≈ 2 s, then gives up.
+     */
+    private attemptScroll(filePath: string, searchText: string, attempt: number): void {
+        const INTERVAL_MS = 200;
+        const MAX_ATTEMPTS = 10;
+
+        if (attempt >= MAX_ATTEMPTS) return;
+
+        setTimeout(() => {
+            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+            if (!view || view.file?.path !== filePath) return; // user navigated away
+
+            // Detect the current view mode using the internal getMode() API
+            // (returns 'preview' | 'source' | 'live').  Not in public types but
+            // stable and widely used by the plugin community.
+            const mode: string = (view as any).getMode?.() ?? 'live';
+
+            if (mode === 'preview') {
+                // ── Reading mode ─────────────────────────────────────────────
+                // Marks are injected by the post-processor (fresh note) or by
+                // applyHighlightToDOM inside requestAnimationFrame (already-open
+                // note).  Keep retrying until they appear.
+                const firstMark = view.contentEl.querySelector('mark.autolink-highlight');
+                if (firstMark instanceof HTMLElement) {
+                    firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return; // done
+                }
+                // Marks not in DOM yet — retry
+                this.attemptScroll(filePath, searchText, attempt + 1);
+            } else {
+                // ── Live preview / source mode ────────────────────────────────
+                // The raw document text is always available immediately; no need
+                // to wait for CM6 decorations to render before scrolling.
+                const editor = view.editor;
+                if (!editor) return;
+
+                const content = editor.getValue();
+                const idx = content.toLowerCase().indexOf(searchText.toLowerCase());
+                if (idx < 0) return;
+
+                const from = editor.offsetToPos(idx);
+                const to   = editor.offsetToPos(idx + searchText.length);
+                editor.scrollIntoView({ from, to }, true /* centre */);
+            }
+        }, attempt === 0 ? 300 : INTERVAL_MS);
     }
 
     onunload() {

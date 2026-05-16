@@ -64,21 +64,38 @@
 
 /*
   Applied to text inside a note when the user arrived there by clicking a
-  virtual link with display text.  Cleared automatically when the note is
-  closed.
+  virtual link with display text.  Uses a soft green so it is immediately
+  distinguishable from the user's own ==yellow== highlights.
+
+  Two separate rules cover both modes:
+    • Reading mode  → DOM <mark class="autolink-highlight"> elements
+    • Live preview  → CM6 mark decoration (<span class="autolink-highlight">)
+                      and highlighted virtual-link widget spans
 */
 
-/* Reading-mode: DOM <mark> elements injected by applyHighlightToDOM(). */
+/* Soft sage-green that reads well on both light and dark Obsidian themes. */
+:root {
+    --autolink-highlight-bg: hsla(145, 55%, 55%, 0.28);
+    --autolink-highlight-bg-hover: hsla(145, 55%, 55%, 0.42);
+}
+
+/* Reading mode injected <mark> */
 mark.autolink-highlight {
-    background-color: var(--text-highlight-bg, rgba(255, 213, 0, 0.28));
+    background-color: var(--autolink-highlight-bg);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;
+    transition: background-color 0.2s ease;
 }
 
-/* Live-preview: CM6 mark decoration (class="autolink-highlight") wrapping
-   plain text runs, plus the wrapper span for highlighted virtual-link widgets. */
+mark.autolink-highlight:first-of-type {
+    outline: 1px solid hsla(145, 55%, 45%, 0.5);
+    outline-offset: 1px;
+}
+
+/* Live-preview CM6 mark decoration span + highlighted virtual-link widgets */
 .autolink-highlight {
-    background-color: var(--text-highlight-bg, rgba(255, 213, 0, 0.28));
+    background-color: var(--autolink-highlight-bg);
     border-radius: 2px;
+    transition: background-color 0.2s ease;
 }
