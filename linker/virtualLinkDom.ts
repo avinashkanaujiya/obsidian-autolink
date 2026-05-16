@@ -3,6 +3,8 @@ import { LinkerPluginSettings } from 'main';
 import { TFile } from 'obsidian';
 import { findFirstMatch } from './highlightService';
 
+const OPEN_ALL_LABEL = 'oa';
+
 export class VirtualMatch {
     constructor(
         public id: number,
@@ -70,6 +72,19 @@ export class VirtualMatch {
         return link;
     }
 
+    getOpenAllAnchorElement() {
+        const link = document.createElement('a');
+        link.href = this.files[0]?.path ?? '';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.setAttribute('origin-text', this.originText);
+        link.setAttribute('data-open-all-paths', JSON.stringify(this.files.map((file) => file.path)));
+        link.setAttribute('aria-label', 'Open all linked notes');
+        link.classList.add('internal-link', 'virtual-link-open-all');
+        link.textContent = ` ${OPEN_ALL_LABEL} `;
+        return link;
+    }
+
     getLinkRootSpan() {
         const span = document.createElement('span');
         span.classList.add('glossary-entry', 'virtual-link', 'virtual-link-span');
@@ -85,30 +100,25 @@ export class VirtualMatch {
             spanReferences.classList.add('multiple-files-references');
         }
 
-        const files = this.files;
+        const items: HTMLAnchorElement[] = [this.getOpenAllAnchorElement()];
+        this.files.forEach((file, index) => {
+            items.push(this.getLinkAnchorElement(` ${index + 1} `, file.path));
+        });
 
-        files.forEach((file, index) => {
-            if (index === 0) {
-                const bracket = document.createElement('span');
-                bracket.textContent = this.isSubWord ? '[' : ' [';
-                spanReferences.appendChild(bracket);
-            }
+        const openingBracket = document.createElement('span');
+        openingBracket.textContent = this.isSubWord ? '[' : ' [';
+        spanReferences.appendChild(openingBracket);
 
-            let linkText = ` ${index + 1} `;
-            if (index < files.length - 1) {
-                linkText += '|';
-            }
-
-            const linkHref = file.path;
-            const link = this.getLinkAnchorElement(linkText, linkHref);
-            spanReferences.appendChild(link);
-
-            if (index == files.length - 1) {
-                const bracket = document.createElement('span');
-                bracket.textContent = ']';
-                spanReferences.appendChild(bracket);
+        items.forEach((item, index) => {
+            spanReferences.appendChild(item);
+            if (index < items.length - 1) {
+                spanReferences.appendChild(document.createTextNode('|'));
             }
         });
+
+        const closingBracket = document.createElement('span');
+        closingBracket.textContent = ']';
+        spanReferences.appendChild(closingBracket);
 
         return spanReferences;
     }

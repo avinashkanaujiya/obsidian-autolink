@@ -156,7 +156,7 @@ function isMarkdownFileOrFolder(file: TAbstractFile): boolean {
     return file instanceof TFolder || (file instanceof TFile && file.extension === 'md');
 }
 
-type VirtualLinkAnchor = {
+type VirtualLinkTarget = {
     getAttribute(name: string): string | null;
 };
 
@@ -164,6 +164,8 @@ type ClosestCapableElement = {
     closest(selector: string): unknown;
     parentElement?: unknown;
 };
+
+const OPEN_ALL_DELAY_MS = 200;
 
 function getClosestCapableElement(target: EventTarget | null): ClosestCapableElement | null {
     const candidate = target as unknown as ClosestCapableElement | null;
@@ -179,13 +181,18 @@ function getClosestCapableElement(target: EventTarget | null): ClosestCapableEle
     return null;
 }
 
-function resolveVirtualLinkAnchor(target: EventTarget | null): VirtualLinkAnchor | null {
+function resolveVirtualLinkTarget(target: EventTarget | null): VirtualLinkTarget | null {
     const element = getClosestCapableElement(target);
     if (!element) return null;
 
+    const openAllAction = element.closest('.virtual-link-open-all');
+    if (openAllAction && typeof (openAllAction as VirtualLinkTarget).getAttribute === 'function') {
+        return openAllAction as VirtualLinkTarget;
+    }
+
     const directAnchor = element.closest('.virtual-link-a');
-    if (directAnchor && typeof (directAnchor as VirtualLinkAnchor).getAttribute === 'function') {
-        return directAnchor as VirtualLinkAnchor;
+    if (directAnchor && typeof (directAnchor as VirtualLinkTarget).getAttribute === 'function') {
+        return directAnchor as VirtualLinkTarget;
     }
 
     const widget = element.closest('.virtual-link-span') as { querySelector?(selector: string): unknown } | null;
@@ -194,9 +201,28 @@ function resolveVirtualLinkAnchor(target: EventTarget | null): VirtualLinkAnchor
     }
 
     const firstAnchor = widget.querySelector('.virtual-link-a');
-    return firstAnchor && typeof (firstAnchor as VirtualLinkAnchor).getAttribute === 'function'
-        ? firstAnchor as VirtualLinkAnchor
+    return firstAnchor && typeof (firstAnchor as VirtualLinkTarget).getAttribute === 'function'
+        ? firstAnchor as VirtualLinkTarget
         : null;
+}
+
+function parseVirtualLinkPaths(rawPaths: string | null): string[] {
+    if (!rawPaths) return [];
+
+    try {
+        const parsed = JSON.parse(rawPaths);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed.filter((path): path is string => typeof path === 'string' && path.length > 0);
+    } catch {
+        return [];
+    }
+}
+
+function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function handleVirtualLinkClickEvent(
@@ -206,22 +232,39 @@ export async function handleVirtualLinkClickEvent(
 ): Promise<void> {
     if (e.button !== 0) return;
 
-    const anchor = resolveVirtualLinkAnchor(e.target);
-    if (!anchor) return;
+    const target = resolveVirtualLinkTarget(e.target);
+    if (!target) return;
 
-    const href = anchor.getAttribute('href');
-    if (!href) return;
+    const openAllPaths = Array.from(new Set(parseVirtualLinkPaths(target.getAttribute('data-open-all-paths'))));
+    const href = target.getAttribute('href');
+    const targetPaths = openAllPaths.length > 0
+        ? openAllPaths
+        : (href ? [href] : []);
 
-    const searchText = anchor.getAttribute('origin-text');
+    if (targetPaths.length === 0) return;
+
+    const searchText = target.getAttribute('origin-text');
     if (searchText) {
-        highlightService.setPending(href, searchText);
+        targetPaths.forEach((path) => highlightService.setPending(path, searchText));
     }
 
     e.preventDefault();
     e.stopPropagation();
 
     const sourcePath = app.workspace.getActiveFile()?.path ?? '';
-    await app.workspace.openLinkText(href, sourcePath, Keymap.isModEvent(e));
+
+    if (openAllPaths.length > 0) {
+        const openMode = Keymap.isModEvent(e) || 'tab';
+        for (let index = 0; index < targetPaths.length; index++) {
+            await app.workspace.openLinkText(targetPaths[index], sourcePath, openMode);
+            if (index < targetPaths.length - 1) {
+                await wait(OPEN_ALL_DELAY_MS);
+            }
+        }
+        return;
+    }
+
+    await app.workspace.openLinkText(targetPaths[0], sourcePath, Keymap.isModEvent(e));
 }
 
 export default class LinkerPlugin extends Plugin {

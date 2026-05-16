@@ -1,4 +1,4 @@
-import { findFirstMatch, SectionSourceMapper } from '../linker/highlightService';
+import { findFirstMatch, HighlightService, SectionSourceMapper } from '../linker/highlightService';
 
 describe('findFirstMatch', () => {
     it('returns the first case-insensitive match', () => {
@@ -35,5 +35,19 @@ describe('SectionSourceMapper', () => {
         expect(mapper.locate('Plato')).toBe(0);
         expect(mapper.locate(' and Plato')).toBe(5);
         expect(mapper.locate(' and Plato')).toBe(15);
+    });
+});
+
+describe('HighlightService pending queue', () => {
+    it('tracks pending highlights for multiple target files independently', () => {
+        const service = new HighlightService();
+
+        service.setPending('Notes/First.md', 'Plato');
+        service.setPending('Notes/Second.md', 'Aristotle');
+
+        expect(service.activateForFile('Notes/First.md')).toBe('Plato');
+        expect(service.activateForFile('Notes/Second.md')).toBe('Aristotle');
+        expect(service.getActive('Notes/First.md')).toBe('Plato');
+        expect(service.getActive('Notes/Second.md')).toBe('Aristotle');
     });
 });

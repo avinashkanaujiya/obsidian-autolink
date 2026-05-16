@@ -196,6 +196,66 @@ describe('handleVirtualLinkClickEvent', () => {
         expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', false);
     });
 
+    it('opens all candidate files in new tabs when clicking the open-all action', async () => {
+        jest.useFakeTimers();
+
+        try {
+            const app = {
+                workspace: {
+                    getActiveFile: () => makeFile('Notes/Source.md'),
+                    openLinkText: jest.fn(async () => undefined),
+                },
+            };
+            const highlightService = {
+                setPending: jest.fn(),
+            };
+
+            const openAllAnchor = {
+                getAttribute: (name: string) => {
+                    if (name === 'href') return 'Notes/First.md';
+                    if (name === 'origin-text') return 'Target';
+                    if (name === 'data-open-all-paths') {
+                        return JSON.stringify([
+                            'Notes/First.md',
+                            'Notes/Second.md',
+                            'Notes/Third.md',
+                        ]);
+                    }
+                    return null;
+                },
+            };
+
+            const event = {
+                button: 0,
+                target: {
+                    closest: (selector: string) => selector === '.virtual-link-open-all' ? openAllAnchor : null,
+                },
+                preventDefault: jest.fn(),
+                stopPropagation: jest.fn(),
+            } as unknown as MouseEvent;
+
+            const clickPromise = handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+
+            await Promise.resolve();
+
+            expect(highlightService.setPending).toHaveBeenNthCalledWith(1, 'Notes/First.md', 'Target');
+            expect(highlightService.setPending).toHaveBeenNthCalledWith(2, 'Notes/Second.md', 'Target');
+            expect(highlightService.setPending).toHaveBeenNthCalledWith(3, 'Notes/Third.md', 'Target');
+            expect(app.workspace.openLinkText).toHaveBeenNthCalledWith(1, 'Notes/First.md', 'Notes/Source.md', 'tab');
+
+            await jest.advanceTimersByTimeAsync(400);
+            await clickPromise;
+
+            expect(app.workspace.openLinkText).toHaveBeenNthCalledWith(2, 'Notes/Second.md', 'Notes/Source.md', 'tab');
+            expect(app.workspace.openLinkText).toHaveBeenNthCalledWith(3, 'Notes/Third.md', 'Notes/Source.md', 'tab');
+            expect(app.workspace.openLinkText).toHaveBeenCalledTimes(3);
+            expect(event.preventDefault).toHaveBeenCalled();
+            expect(event.stopPropagation).toHaveBeenCalled();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('ignores non-left mouse buttons', async () => {
         const app = {
             workspace: {

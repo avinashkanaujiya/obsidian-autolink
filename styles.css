@@ -16,7 +16,8 @@
 }
 
 /* The clickable anchor – blend into the text flow with a dashed underline. */
-.virtual-link-default .virtual-link-a {
+.virtual-link-default .virtual-link-a,
+.virtual-link-default .virtual-link-open-all {
     color: inherit;
     text-decoration: underline;
     text-decoration-style: dashed;
@@ -26,7 +27,8 @@
     transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
 
-.virtual-link-default .virtual-link-a:hover {
+.virtual-link-default .virtual-link-a:hover,
+.virtual-link-default .virtual-link-open-all:hover {
     color: inherit;
     text-decoration-style: solid;
     text-decoration-color: currentColor;

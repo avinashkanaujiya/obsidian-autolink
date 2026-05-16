@@ -5,9 +5,10 @@ import type { MarkdownSectionInformation } from 'obsidian';
  * after the user navigates to it by clicking a virtual link with display text.
  *
  * Lifecycle:
- *   1. User clicks a .virtual-link-a → setPending(filePath, searchText)
+ *   1. User clicks a .virtual-link-a or .virtual-link-open-all
+ *      → setPending(filePath, searchText)
  *   2. workspace 'file-open' event fires → activateForFile(filePath)
- *      → moves pending to active, returns the searchText
+ *      → moves any pending highlight for that file to active, returns the searchText
  *   3. Highlight is applied (DOM for reading mode, CM6 decorations for live preview)
  *   4. workspace 'layout-change' event fires → clearStale(openFilePaths)
  *      → removes highlights for notes that are no longer open
@@ -16,8 +17,8 @@ export class HighlightService {
     /** filePath → searchText currently active for that note */
     private readonly activeHighlights = new Map<string, string>();
 
-    /** One-shot pending highlight, waiting for the target file to open */
-    private pending: { filePath: string; searchText: string } | null = null;
+    /** Pending highlights waiting for their target files to open */
+    private readonly pendingHighlights = new Map<string, string>();
 
     /** Subscribers notified whenever the active highlights change */
     private readonly updateCallbacks = new Set<() => void>();
@@ -28,7 +29,7 @@ export class HighlightService {
 
     /** Call when a virtual link with display text is clicked. */
     setPending(filePath: string, searchText: string): void {
-        this.pending = { filePath, searchText };
+        this.pendingHighlights.set(filePath, searchText);
     }
 
     /**
@@ -36,9 +37,10 @@ export class HighlightService {
      * active.  Returns the active searchText for this file (if any).
      */
     activateForFile(filePath: string): string | undefined {
-        if (this.pending?.filePath === filePath) {
-            this.activeHighlights.set(filePath, this.pending.searchText);
-            this.pending = null;
+        const pendingSearchText = this.pendingHighlights.get(filePath);
+        if (pendingSearchText !== undefined) {
+            this.activeHighlights.set(filePath, pendingSearchText);
+            this.pendingHighlights.delete(filePath);
             this.notifyUpdate();
         }
         return this.activeHighlights.get(filePath);
