@@ -1,8 +1,11 @@
 import LinkerPlugin, {
     buildRelativeVaultPath,
     handleVirtualLinkClickEvent,
+    handleVirtualLinkHoverEnterEvent,
+    handleVirtualLinkHoverLeaveEvent,
     LinkerPluginSettings,
     normalizeFrontmatterTags,
+    VIRTUAL_LINK_HOVER_DELAY_MS,
 } from 'main';
 import { TFile } from 'obsidian';
 
@@ -53,6 +56,30 @@ function makeFile(path: string): TFile {
         stat: { mtime: 1000, ctime: 1000, size: 0 },
         parent: null,
     } as unknown as TFile;
+}
+
+function makeHoverRoot() {
+    const classes = new Set<string>();
+    const root = {
+        classList: {
+            add: (token: string) => {
+                classes.add(token);
+            },
+            remove: (token: string) => {
+                classes.delete(token);
+            },
+            contains: (token: string) => classes.has(token),
+        },
+        closest: (selector: string) => selector === '.virtual-link-span' ? root : null,
+    };
+
+    return { root, classes };
+}
+
+function makeHoverTarget(root: { closest: (selector: string) => unknown }) {
+    return {
+        closest: (selector: string) => selector === '.virtual-link-span' ? root : null,
+    };
 }
 
 describe('buildRelativeVaultPath', () => {
@@ -115,6 +142,71 @@ describe('LinkerPlugin.buildRealLink', () => {
 
         const targetFile = makeFile('Notes/Target.md');
         expect(plugin.buildRealLink(targetFile, 'Notes/Source.md', 'Shown text')).toBe('[[Target|Shown text]]');
+    });
+});
+
+describe('handleVirtualLink hover activation', () => {
+    it('activates hover styling only after the delay', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const event = {
+                target: makeHoverTarget(root),
+                relatedTarget: null,
+            } as unknown as MouseEvent;
+
+            handleVirtualLinkHoverEnterEvent(event);
+            expect(classes.has('virtual-link-hover-active')).toBe(false);
+
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS - 1);
+            expect(classes.has('virtual-link-hover-active')).toBe(false);
+
+            jest.advanceTimersByTime(1);
+            expect(classes.has('virtual-link-hover-active')).toBe(true);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('cancels the pending hover styling when the pointer leaves quickly', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const target = makeHoverTarget(root);
+
+            handleVirtualLinkHoverEnterEvent({ target, relatedTarget: null } as unknown as MouseEvent);
+            handleVirtualLinkHoverLeaveEvent({ target, relatedTarget: null } as unknown as MouseEvent);
+
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
+            expect(classes.has('virtual-link-hover-active')).toBe(false);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('keeps hover styling active while moving between descendants of the same virtual link', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const firstTarget = makeHoverTarget(root);
+            const secondTarget = makeHoverTarget(root);
+
+            handleVirtualLinkHoverEnterEvent({ target: firstTarget, relatedTarget: null } as unknown as MouseEvent);
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
+            expect(classes.has('virtual-link-hover-active')).toBe(true);
+
+            handleVirtualLinkHoverLeaveEvent({
+                target: firstTarget,
+                relatedTarget: secondTarget,
+            } as unknown as MouseEvent);
+
+            expect(classes.has('virtual-link-hover-active')).toBe(true);
+        } finally {
+            jest.useRealTimers();
+        }
     });
 });
 

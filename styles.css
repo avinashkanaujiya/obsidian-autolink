@@ -27,8 +27,8 @@
     transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
 
-.virtual-link-default .virtual-link-a:hover,
-.virtual-link-default .virtual-link-open-all:hover {
+.virtual-link-default.virtual-link-hover-active .virtual-link-a,
+.virtual-link-default.virtual-link-hover-active .virtual-link-open-all {
     color: inherit;
     text-decoration-style: solid;
     text-decoration-color: currentColor;
@@ -54,7 +54,7 @@
 
 /* ── Multiple-references hover interaction ────────────────────────────────── */
 
-.virtual-link-span:hover .multiple-files-references {
+.virtual-link-span.virtual-link-hover-active .multiple-files-references {
     display: inline;
 }
 

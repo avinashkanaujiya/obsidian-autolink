@@ -165,7 +165,18 @@ type ClosestCapableElement = {
     parentElement?: unknown;
 };
 
+type VirtualLinkHoverElement = {
+    classList: {
+        add(token: string): void;
+        remove(token: string): void;
+        contains(token: string): boolean;
+    };
+};
+
 const OPEN_ALL_DELAY_MS = 200;
+export const VIRTUAL_LINK_HOVER_DELAY_MS = 180;
+const VIRTUAL_LINK_HOVER_ACTIVE_CLASS = 'virtual-link-hover-active';
+const virtualLinkHoverTimers = new WeakMap<VirtualLinkHoverElement, ReturnType<typeof setTimeout>>();
 
 function getClosestCapableElement(target: EventTarget | null): ClosestCapableElement | null {
     const candidate = target as unknown as ClosestCapableElement | null;
@@ -179,6 +190,38 @@ function getClosestCapableElement(target: EventTarget | null): ClosestCapableEle
     }
 
     return null;
+}
+
+function isVirtualLinkHoverElement(value: unknown): value is VirtualLinkHoverElement {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+
+    const classList = (value as VirtualLinkHoverElement).classList;
+    return !!classList
+        && typeof classList.add === 'function'
+        && typeof classList.remove === 'function'
+        && typeof classList.contains === 'function';
+}
+
+function resolveVirtualLinkHoverElement(target: EventTarget | null): VirtualLinkHoverElement | null {
+    const element = getClosestCapableElement(target);
+    if (!element) return null;
+
+    const hoverElement = element.closest('.virtual-link-span');
+    return isVirtualLinkHoverElement(hoverElement)
+        ? hoverElement
+        : null;
+}
+
+function clearVirtualLinkHoverTimer(element: VirtualLinkHoverElement): void {
+    const timer = virtualLinkHoverTimers.get(element);
+    if (timer == null) {
+        return;
+    }
+
+    clearTimeout(timer);
+    virtualLinkHoverTimers.delete(element);
 }
 
 function resolveVirtualLinkTarget(target: EventTarget | null): VirtualLinkTarget | null {
@@ -223,6 +266,43 @@ function parseVirtualLinkPaths(rawPaths: string | null): string[] {
 
 function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function handleVirtualLinkHoverEnterEvent(e: MouseEvent): void {
+    const hoverElement = resolveVirtualLinkHoverElement(e.target);
+    if (!hoverElement) {
+        return;
+    }
+
+    const previousHoverElement = resolveVirtualLinkHoverElement(e.relatedTarget);
+    if (hoverElement === previousHoverElement) {
+        return;
+    }
+
+    clearVirtualLinkHoverTimer(hoverElement);
+    hoverElement.classList.remove(VIRTUAL_LINK_HOVER_ACTIVE_CLASS);
+
+    const timer = setTimeout(() => {
+        hoverElement.classList.add(VIRTUAL_LINK_HOVER_ACTIVE_CLASS);
+        virtualLinkHoverTimers.delete(hoverElement);
+    }, VIRTUAL_LINK_HOVER_DELAY_MS);
+
+    virtualLinkHoverTimers.set(hoverElement, timer);
+}
+
+export function handleVirtualLinkHoverLeaveEvent(e: MouseEvent): void {
+    const hoverElement = resolveVirtualLinkHoverElement(e.target);
+    if (!hoverElement) {
+        return;
+    }
+
+    const nextHoverElement = resolveVirtualLinkHoverElement(e.relatedTarget);
+    if (hoverElement === nextHoverElement) {
+        return;
+    }
+
+    clearVirtualLinkHoverTimer(hoverElement);
+    hoverElement.classList.remove(VIRTUAL_LINK_HOVER_ACTIVE_CLASS);
 }
 
 export async function handleVirtualLinkClickEvent(
@@ -315,6 +395,15 @@ export default class LinkerPlugin extends Plugin {
         // ----------------------------------------------------------------
         this.registerDomEvent(document, 'mousedown', (e: MouseEvent) => {
             void handleVirtualLinkClickEvent(this.app, this.highlightService, e);
+        }, true /* capture */);
+
+        // Delay hover-only affordances so links the pointer merely crosses do
+        // not flash their chooser or switch to the stronger underline style.
+        this.registerDomEvent(document, 'mouseover', (e: MouseEvent) => {
+            handleVirtualLinkHoverEnterEvent(e);
+        }, true /* capture */);
+        this.registerDomEvent(document, 'mouseout', (e: MouseEvent) => {
+            handleVirtualLinkHoverLeaveEvent(e);
         }, true /* capture */);
 
         // Promote pending highlight when the target file opens and apply it.

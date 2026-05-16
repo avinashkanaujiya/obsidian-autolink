@@ -110,7 +110,7 @@ By default, the suffix is "🔗".
 When a virtual link points to multiple candidate notes, the numbered chooser now includes an `oa` entry first, which opens all matched notes in sequence. Unless "Always show multiple references" is enabled, that chooser stays hidden until you hover the virtual link.
 
 By default (and if the default styling is toggled on in the settings), the links inherit the surrounding text styling and add a very faint dashed underline so they blend into surrounding text.
-When you hover a virtual link, the surrounding text styling is preserved and the underline becomes solid. Display-text highlights still use the current theme accent.
+When you rest the pointer on a virtual link, the surrounding text styling is preserved and the underline becomes solid after a short delay. The multi-candidate chooser also waits for that short delay before appearing, which avoids flicker when the pointer only passes over a link. Display-text highlights still use the current theme accent.
 You can turn off this default styling in the settings.
 
 To apply custom styling to the links, you can add a CSS-snippet at `VaultFolder/.obsidian/snippets/virtualLinks.css` file.
