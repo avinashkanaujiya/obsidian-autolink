@@ -107,31 +107,35 @@ You can disable links for the current line you are typing.
 Any created virtual link will be appended with this suffix. This is useful to distinguish between real and virtual links.
 By default, the suffix is "🔗".
 
-By default (and if the default styling is toggled on in the settings), the links appear a little bit darker than your normal links.
+By default (and if the default styling is toggled on in the settings), the links keep the normal note text color with a dashed underline so they blend into surrounding text.
+When you hover a virtual link, the text stays on the normal note text color and the underline becomes solid. Display-text highlights still use the current theme accent.
 You can turn off this default styling in the settings.
 
 To apply custom styling to the links, you can add a CSS-snippet at `VaultFolder/.obsidian/snippets/virtualLinks.css` file.
 
 ```css
 /* Properties of the virtual link when not hovered */
+.virtual-link.glossary-entry {
+    color: var(--text-normal);
+}
+
 .virtual-link.glossary-entry a {
-    /* To have the normal text color when not hovered */
     color: inherit;
-
-    /* Or add a color, e.g. red */
-    /* color: red; */
-
-    /* You can also change the underline of the link in thickness, color, and other properties */
     text-decoration-thickness: 1px;
-    text-decoration-color: rgb(var(--color-purple-rgb), 0.6);
+    text-decoration-style: dashed;
+    text-decoration-color: color-mix(in srgb, currentColor 18%, transparent);
     text-underline-position: under;
-    /* text-decoration-style: dotted; */
-    /* text-underline-offset: 0em; */
 }
 
 /* Properties of the virtual link when hovered */
+.virtual-link.glossary-entry:hover {
+    color: var(--text-normal);
+}
+
 .virtual-link.glossary-entry a:hover {
-    color: var(--link-color);
+    color: inherit;
+    text-decoration-style: solid;
+    text-decoration-color: currentColor;
 }
 ```
 

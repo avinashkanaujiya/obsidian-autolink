@@ -6,30 +6,38 @@
 
 /* ── Default virtual-link appearance ─────────────────────────────────────── */
 
-/* Keep the span wrapper neutral so only the inner anchor is styled. */
+/* Keep both default and hover text close to surrounding text. */
 .virtual-link-default {
-    /* no outer filter – styling is applied per-element below */
+    color: var(--text-normal);
+    transition: color 0.15s ease;
 }
 
-/* The clickable anchor – subtle dashed underline, slightly muted colour. */
+.virtual-link-default:hover {
+    color: var(--text-normal);
+}
+
+/* The clickable anchor – blend into the text flow with a dashed underline. */
 .virtual-link-default .virtual-link-a {
+    color: inherit;
     text-decoration: underline;
     text-decoration-style: dashed;
     text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in srgb, currentColor 18%, transparent);
     text-underline-offset: 2px;
-    opacity: 0.72;
-    transition: opacity 0.15s ease, text-decoration-style 0.15s ease;
+    transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
 
 .virtual-link-default .virtual-link-a:hover {
-    opacity: 1;
+    color: inherit;
     text-decoration-style: solid;
+    text-decoration-color: currentColor;
 }
 
 /* The suffix icon (🔗 by default) – smaller and unobtrusive. */
 .virtual-link-default .linker-suffix-icon {
+    color: inherit;
     font-size: 0.52em;
-    opacity: 0.45;
+    opacity: 0.55;
     margin-left: 0.5px;
     vertical-align: super;
     line-height: 0;
@@ -64,8 +72,8 @@
 
 /*
   Applied to text inside a note when the user arrived there by clicking a
-  virtual link with display text.  Uses a soft green so it is immediately
-  distinguishable from the user's own ==yellow== highlights.
+  virtual link with display text. The highlight is derived from the active
+  theme accent so it feels consistent in both reading mode and live preview.
 
   Two separate rules cover both modes:
     • Reading mode  → DOM <mark class="autolink-highlight"> elements
@@ -73,10 +81,10 @@
                       and highlighted virtual-link widget spans
 */
 
-/* Soft sage-green that reads well on both light and dark Obsidian themes. */
-:root {
-    --autolink-highlight-bg: hsla(145, 55%, 55%, 0.28);
-    --autolink-highlight-bg-hover: hsla(145, 55%, 55%, 0.42);
+body {
+    --autolink-highlight-bg: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+    --autolink-highlight-bg-hover: color-mix(in srgb, var(--interactive-accent) 36%, transparent);
+    --autolink-highlight-outline: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
 }
 
 /* Reading mode injected <mark> */
@@ -88,8 +96,12 @@ mark.autolink-highlight {
     transition: background-color 0.2s ease;
 }
 
+mark.autolink-highlight:hover {
+    background-color: var(--autolink-highlight-bg-hover);
+}
+
 mark.autolink-highlight:first-of-type {
-    outline: 1px solid hsla(145, 55%, 45%, 0.5);
+    outline: 1px solid var(--autolink-highlight-outline);
     outline-offset: 1px;
 }
 
@@ -98,6 +110,10 @@ mark.autolink-highlight:first-of-type {
     background-color: var(--autolink-highlight-bg);
     border-radius: 2px;
     transition: background-color 0.2s ease;
+}
+
+.autolink-highlight:hover {
+    background-color: var(--autolink-highlight-bg-hover);
 }
 
 /* ── Autolink Highlights sidebar panel ───────────────────────────────────── */
