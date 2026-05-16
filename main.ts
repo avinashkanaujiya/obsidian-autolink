@@ -3,11 +3,9 @@ import { App, EditorPosition, MarkdownView, Menu, Plugin, PluginSettingTab, Sett
 import { GlossaryLinker } from './linker/readModeLinker';
 import { liveLinkerPlugin } from './linker/liveLinker';
 import { ExternalUpdateManager, LinkerCache } from 'linker/linkerCache';
-import { LinkerMetaInfoFetcher } from 'linker/linkerInfo';
+import { LinkerMetaInfoFetcher, normalizeDirectorySetting } from 'linker/linkerInfo';
 import { HighlightService, applyHighlightToDOM } from 'linker/highlightService';
 import { HighlightView, HIGHLIGHT_VIEW_TYPE } from 'linker/highlightView';
-
-import * as path from 'path';
 
 export interface LinkerPluginSettings {
     advancedSettings: boolean;
@@ -88,18 +86,84 @@ const DEFAULT_SETTINGS: LinkerPluginSettings = {
     // wordBoundaryRegex: '/[\t- !-/:-@\[-`{-~\p{Emoji_Presentation}\p{Extended_Pictographic}]/u',
 };
 
+function normalizeVaultPath(filePath: string): string {
+    return filePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+}
+
+function getVaultDirname(filePath: string): string {
+    const normalized = normalizeVaultPath(filePath);
+    const lastSlashIndex = normalized.lastIndexOf('/');
+    return lastSlashIndex === -1 ? '' : normalized.slice(0, lastSlashIndex);
+}
+
+function getVaultBasename(filePath: string): string {
+    const normalized = normalizeVaultPath(filePath);
+    const lastSlashIndex = normalized.lastIndexOf('/');
+    return lastSlashIndex === -1 ? normalized : normalized.slice(lastSlashIndex + 1);
+}
+
+function getRelativeDirectoryPath(sourceDir: string, targetDir: string): string {
+    const sourceParts = sourceDir.length > 0 ? sourceDir.split('/') : [];
+    const targetParts = targetDir.length > 0 ? targetDir.split('/') : [];
+
+    let sharedIndex = 0;
+    while (
+        sharedIndex < sourceParts.length &&
+        sharedIndex < targetParts.length &&
+        sourceParts[sharedIndex] === targetParts[sharedIndex]
+    ) {
+        sharedIndex += 1;
+    }
+
+    const parentParts = sourceParts.slice(sharedIndex).map(() => '..');
+    const childParts = targetParts.slice(sharedIndex);
+    return [...parentParts, ...childParts].join('/');
+}
+
+export function buildRelativeVaultPath(sourceFilePath: string, targetFilePath: string): string {
+    const sourceDir = getVaultDirname(sourceFilePath);
+    const targetDir = getVaultDirname(targetFilePath);
+    const targetBase = getVaultBasename(targetFilePath);
+    const relativeDir = getRelativeDirectoryPath(sourceDir, targetDir);
+    return relativeDir.length > 0 ? `${relativeDir}/${targetBase}` : targetBase;
+}
+
+export function normalizeFrontmatterTags(tags: unknown): string[] {
+    if (typeof tags === 'string') {
+        const normalizedTag = tags.trim();
+        return normalizedTag.length > 0 ? [normalizedTag] : [];
+    }
+
+    if (!Array.isArray(tags)) {
+        return [];
+    }
+
+    return tags
+        .filter((tag): tag is string => typeof tag === 'string')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+}
+
+function matchesFolderSetting(directorySetting: string, folder: TFolder): boolean {
+    const normalizedSetting = normalizeDirectorySetting(directorySetting);
+    return (
+        normalizedSetting === normalizeDirectorySetting(folder.path) ||
+        normalizedSetting === normalizeDirectorySetting(folder.name)
+    );
+}
+
+function isMarkdownFileOrFolder(file: TAbstractFile): boolean {
+    return file instanceof TFolder || (file instanceof TFile && file.extension === 'md');
+}
+
 export default class LinkerPlugin extends Plugin {
     settings: LinkerPluginSettings;
     updateManager = new ExternalUpdateManager();
     highlightService = new HighlightService();
+    private cacheRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
     async onload() {
         await this.loadSettings();
-
-        // Set callback to update the cache when the settings are changed
-        this.updateManager.registerCallback(() => {
-            LinkerCache.getInstance(this.app, this.settings).clearCache();
-        });
 
         // Register the glossary linker for the read mode.
         // The second post-processor applies highlight marks for notes opened
@@ -171,7 +235,7 @@ export default class LinkerPlugin extends Plugin {
                     // Prefer the internal previewMode container; fall back to
                     // well-known CSS classes so we never apply to toolbar DOM.
                     const readingEl: HTMLElement | null =
-                        (view as any).previewMode?.containerEl ??
+                        view.previewMode?.containerEl ??
                         view.contentEl.querySelector('.markdown-reading-view') ??
                         view.contentEl.querySelector('.markdown-preview-view');
 
@@ -201,14 +265,45 @@ export default class LinkerPlugin extends Plugin {
             })
         );
 
+        this.registerEvent(
+            this.app.vault.on('create', (file) => {
+                if (isMarkdownFileOrFolder(file)) {
+                    this.scheduleCacheRefresh();
+                }
+            })
+        );
+
+        this.registerEvent(
+            this.app.vault.on('delete', (file) => {
+                if (isMarkdownFileOrFolder(file)) {
+                    this.scheduleCacheRefresh();
+                }
+            })
+        );
+
+        this.registerEvent(
+            this.app.vault.on('rename', (file) => {
+                if (isMarkdownFileOrFolder(file)) {
+                    this.scheduleCacheRefresh();
+                }
+            })
+        );
+
+        this.registerEvent(
+            this.app.metadataCache.on('changed', (file) => {
+                if (file instanceof TFile) {
+                    this.scheduleCacheRefresh();
+                }
+            })
+        );
+
         this.addCommand({
             id: 'activate-virtual-linker',
             name: 'Activate Virtual Linker',
             checkCallback: (checking) => {
                 if (!this.settings.linkerActivated) {
                     if (!checking) {
-                        this.updateSettings({ linkerActivated: true });
-                        this.updateManager.update();
+                        void this.updateSettings({ linkerActivated: true });
                     }
                     return true;
                 }
@@ -222,8 +317,7 @@ export default class LinkerPlugin extends Plugin {
             checkCallback: (checking) => {
                 if (this.settings.linkerActivated) {
                     if (!checking) {
-                        this.updateSettings({ linkerActivated: false });
-                        this.updateManager.update();
+                        void this.updateSettings({ linkerActivated: false });
                     }
                     return true;
                 }
@@ -249,7 +343,7 @@ export default class LinkerPlugin extends Plugin {
                 const to = editor.getCursor('to');
 
                 // Get the DOM element containing the selection
-                const cmEditor = (editor as any).cm;
+                const cmEditor = (editor as unknown as { cm?: { dom: ParentNode } }).cm;
                 if (!cmEditor) return;
 
                 const selectionRange = cmEditor.dom.querySelector('.cm-content');
@@ -318,15 +412,11 @@ export default class LinkerPlugin extends Plugin {
 
     private buildRealLink(targetFile: TFile, sourceFilePath: string, displayText: string): string {
         let absolutePath = targetFile.path;
-        let relativePath =
-            path.relative(path.dirname(sourceFilePath), path.dirname(absolutePath)) +
-            '/' +
-            path.basename(absolutePath);
-        relativePath = relativePath.replace(/\\/g, '/');
+        let relativePath = buildRelativeVaultPath(sourceFilePath, absolutePath);
 
         // fileToLinktext depends on the app's link format setting; we compute all variants ourselves
         const replacementPath = this.app.metadataCache.fileToLinktext(targetFile, sourceFilePath);
-        const lastPart = replacementPath.split('/').pop()!;
+        const lastPart = replacementPath.split('/').pop() ?? replacementPath;
         const shortestFile = this.app.metadataCache.getFirstLinkpathDest(lastPart, '');
         let shortestPath = shortestFile?.path === targetFile.path ? lastPart : absolutePath;
 
@@ -357,15 +447,52 @@ export default class LinkerPlugin extends Plugin {
             : `[[${resolvedPath}|${displayText}]]`;
     }
 
+    private scheduleCacheRefresh(): void {
+        if (this.cacheRefreshTimer !== null) {
+            clearTimeout(this.cacheRefreshTimer);
+        }
+
+        this.cacheRefreshTimer = setTimeout(() => {
+            this.cacheRefreshTimer = null;
+            LinkerCache.getInstance(this.app, this.settings).rebuildCache();
+            this.rerenderReadingViews();
+            this.updateManager.update();
+        }, 75);
+    }
+
+    private rerenderReadingViews(): void {
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            if (!(leaf.view instanceof MarkdownView) || leaf.view.getMode() !== 'preview') {
+                return;
+            }
+            leaf.view.previewMode.rerender(true);
+        });
+    }
+
+    private async updateFileTags(targetFile: TFile, tagToAdd: string, tagToRemove: string): Promise<boolean> {
+        const currentTags = normalizeFrontmatterTags(this.app.metadataCache.getFileCache(targetFile)?.frontmatter?.tags);
+        const requiresUpdate = !currentTags.includes(tagToAdd) || currentTags.includes(tagToRemove);
+        if (!requiresUpdate) {
+            return false;
+        }
+
+        await this.app.fileManager.processFrontMatter(targetFile, (frontMatter) => {
+            const nextTags = new Set(normalizeFrontmatterTags(frontMatter.tags));
+            nextTags.add(tagToAdd);
+            nextTags.delete(tagToRemove);
+            frontMatter.tags = Array.from(nextTags);
+        });
+
+        return true;
+    }
+
     addContextMenuItem(menu: Menu, file: TAbstractFile, source: string) {
         if (!file) {
             return;
         }
 
 
-        const that = this;
         const app: App = this.app;
-        const updateManager = this.updateManager;
         const settings = this.settings;
 
         const fetcher = new LinkerMetaInfoFetcher(app, settings);
@@ -376,7 +503,7 @@ export default class LinkerPlugin extends Plugin {
         if (!isDirectory) {
             const metaInfo = fetcher.getMetaInfo(file);
 
-            function contextMenuHandler(event: MouseEvent) {
+            const contextMenuHandler = (event: MouseEvent) => {
                 // Access the element that triggered the context menu
                 const targetElement = event.target;
 
@@ -421,7 +548,7 @@ export default class LinkerPlugin extends Plugin {
                                     return;
                                 }
 
-                                const replacement = that.buildRealLink(file as TFile, activeFile.path, text);
+                                const replacement = this.buildRealLink(file as TFile, activeFile.path, text);
 
                                 const editor = app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                                 const fromEditorPos = editor?.offsetToPos(from);
@@ -439,7 +566,7 @@ export default class LinkerPlugin extends Plugin {
 
                 // Remove the listener to prevent multiple triggers
                 document.removeEventListener('contextmenu', contextMenuHandler);
-            }
+            };
 
             if (!metaInfo.excludeFile && (metaInfo.includeAllFiles || metaInfo.includeFile || metaInfo.isInIncludedDir)) {
                 // Item to exclude a virtual link from the linker
@@ -459,38 +586,14 @@ export default class LinkerPlugin extends Plugin {
                                 return;
                             }
 
-                            // Add the tag to the file
-                            const fileCache = app.metadataCache.getFileCache(targetFile);
-                            const frontmatter = fileCache?.frontmatter || {};
+                            const tagWasUpdated = await this.updateFileTags(
+                                targetFile,
+                                settings.tagToExcludeFile,
+                                settings.tagToIncludeFile
+                            );
 
-                            const tag = settings.tagToExcludeFile;
-                            let tags = frontmatter['tags'];
-
-                            if (typeof tags === 'string') {
-                                tags = [tags];
-                            }
-
-                            if (!Array.isArray(tags)) {
-                                tags = [];
-                            }
-
-                            if (!tags.includes(tag)) {
-                                await app.fileManager.processFrontMatter(targetFile, (frontMatter) => {
-                                    if (!frontMatter.tags) {
-                                        frontMatter.tags = new Set();
-                                    }
-                                    const currentTags = [...frontMatter.tags];
-
-                                    frontMatter.tags = new Set([...currentTags, tag]);
-
-                                    // Remove include tag if it exists
-                                    const includeTag = settings.tagToIncludeFile;
-                                    if (frontMatter.tags.has(includeTag)) {
-                                        frontMatter.tags.delete(includeTag);
-                                    }
-                                });
-
-                                updateManager.update();
+                            if (tagWasUpdated) {
+                                this.scheduleCacheRefresh();
                             }
                         });
                 });
@@ -512,38 +615,14 @@ export default class LinkerPlugin extends Plugin {
                                 return;
                             }
 
-                            // Add the tag to the file
-                            const fileCache = app.metadataCache.getFileCache(targetFile);
-                            const frontmatter = fileCache?.frontmatter || {};
+                            const tagWasUpdated = await this.updateFileTags(
+                                targetFile,
+                                settings.tagToIncludeFile,
+                                settings.tagToExcludeFile
+                            );
 
-                            const tag = settings.tagToIncludeFile;
-                            let tags = frontmatter['tags'];
-
-                            if (typeof tags === 'string') {
-                                tags = [tags];
-                            }
-
-                            if (!Array.isArray(tags)) {
-                                tags = [];
-                            }
-
-                            if (!tags.includes(tag)) {
-                                await app.fileManager.processFrontMatter(targetFile, (frontMatter) => {
-                                    if (!frontMatter.tags) {
-                                        frontMatter.tags = new Set();
-                                    }
-                                    const currentTags = [...frontMatter.tags];
-
-                                    frontMatter.tags = new Set([...currentTags, tag]);
-
-                                    // Remove exclude tag if it exists
-                                    const excludeTag = settings.tagToExcludeFile;
-                                    if (frontMatter.tags.has(excludeTag)) {
-                                        frontMatter.tags.delete(excludeTag);
-                                    }
-                                });
-
-                                updateManager.update();
+                            if (tagWasUpdated) {
+                                this.scheduleCacheRefresh();
                             }
                         });
                 });
@@ -574,11 +653,13 @@ export default class LinkerPlugin extends Plugin {
                                 return;
                             }
 
-                            const newExcludedDirs = Array.from(new Set([...settings.excludedDirectories, targetFolder.name]));
-                            const newIncludedDirs = settings.linkerDirectories.filter((dir) => dir !== targetFolder.name);
+                            const folderPath = normalizeDirectorySetting(targetFolder.path);
+                            const newExcludedDirs = Array.from(new Set([
+                                ...settings.excludedDirectories.filter((dir) => !matchesFolderSetting(dir, targetFolder)),
+                                folderPath,
+                            ]));
+                            const newIncludedDirs = settings.linkerDirectories.filter((dir) => !matchesFolderSetting(dir, targetFolder));
                             await this.updateSettings({ linkerDirectories: newIncludedDirs, excludedDirectories: newExcludedDirs });
-
-                            updateManager.update();
                         });
                 });
             } else if ((!fetcher.includeAllFiles && !isInIncludedDir) || isInExcludedDir) {
@@ -598,11 +679,13 @@ export default class LinkerPlugin extends Plugin {
                                 return;
                             }
 
-                            const newExcludedDirs = settings.excludedDirectories.filter((dir) => dir !== targetFolder.name);
-                            const newIncludedDirs = Array.from(new Set([...settings.linkerDirectories, targetFolder.name]));
+                            const folderPath = normalizeDirectorySetting(targetFolder.path);
+                            const newExcludedDirs = settings.excludedDirectories.filter((dir) => !matchesFolderSetting(dir, targetFolder));
+                            const newIncludedDirs = Array.from(new Set([
+                                ...settings.linkerDirectories.filter((dir) => !matchesFolderSetting(dir, targetFolder)),
+                                folderPath,
+                            ]));
                             await this.updateSettings({ linkerDirectories: newIncludedDirs, excludedDirectories: newExcludedDirs });
-
-                            updateManager.update();
                         });
                 });
             }
@@ -716,6 +799,10 @@ export default class LinkerPlugin extends Plugin {
     }
 
     onunload() {
+        if (this.cacheRefreshTimer !== null) {
+            clearTimeout(this.cacheRefreshTimer);
+            this.cacheRefreshTimer = null;
+        }
         LinkerCache.resetInstance();
     }
 
@@ -737,7 +824,7 @@ export default class LinkerPlugin extends Plugin {
     async updateSettings(settings: Partial<LinkerPluginSettings> = <Partial<LinkerPluginSettings>>{}) {
         Object.assign(this.settings, settings);
         await this.saveData(this.settings);
-        this.updateManager.update();
+        this.scheduleCacheRefresh();
     }
 }
 
@@ -1024,7 +1111,7 @@ class LinkerSettingTab extends PluginSettingTab {
         if (!this.plugin.settings.includeAllFiles) {
             new Setting(containerEl)
                 .setName('Glossary linker directories')
-                .setDesc('Directories to include for the virtual linker (separated by new lines).')
+                .setDesc('Directories to include for the virtual linker (one folder path or name per line).')
                 .addTextArea((text) => {
                     let setValue = '';
                     try {
@@ -1033,7 +1120,7 @@ class LinkerSettingTab extends PluginSettingTab {
                         console.warn(e);
                     }
 
-                    text.setPlaceholder('List of directory names (separated by new line)')
+                    text.setPlaceholder('List of directory paths or names (one per line)')
                         .setValue(setValue)
                         .onChange(async (value) => {
                             this.plugin.settings.linkerDirectories = value
@@ -1051,7 +1138,7 @@ class LinkerSettingTab extends PluginSettingTab {
                 new Setting(containerEl)
                     .setName('Excluded directories')
                     .setDesc(
-                        'Directories from which files are to be excluded for the virtual linker (separated by new lines). Files in these directories will not create any virtual links in other files.'
+                        'Directories from which files are to be excluded for the virtual linker (one folder path or name per line). Files in these directories will not create any virtual links in other files.'
                     )
                     .addTextArea((text) => {
                         let setValue = '';
@@ -1061,7 +1148,7 @@ class LinkerSettingTab extends PluginSettingTab {
                             console.warn(e);
                         }
 
-                        text.setPlaceholder('List of directory names (separated by new line)')
+                        text.setPlaceholder('List of directory paths or names (one per line)')
                             .setValue(setValue)
                             .onChange(async (value) => {
                                 this.plugin.settings.excludedDirectories = value
@@ -1111,7 +1198,7 @@ class LinkerSettingTab extends PluginSettingTab {
             // Setting to exclude directories from the linker to be executed
             new Setting(containerEl)
                 .setName('Excluded directories for generating virtual links')
-                .setDesc('Directories in which the plugin will not create virtual links (separated by new lines).')
+                .setDesc('Directories in which the plugin will not create virtual links (one folder path or name per line).')
                 .addTextArea((text) => {
                     let setValue = '';
                     try {
@@ -1120,7 +1207,7 @@ class LinkerSettingTab extends PluginSettingTab {
                         console.warn(e);
                     }
 
-                    text.setPlaceholder('List of directory names (separated by new line)')
+                    text.setPlaceholder('List of directory paths or names (one per line)')
                         .setValue(setValue)
                         .onChange(async (value) => {
                             this.plugin.settings.excludedDirectoriesForLinking = value

@@ -1,4 +1,4 @@
-import { App, MarkdownPostProcessorContext, MarkdownRenderChild, TFile } from 'obsidian';
+import { App, getLinkpath, MarkdownPostProcessorContext, MarkdownRenderChild, TFile } from 'obsidian';
 
 import { LinkerPluginSettings } from '../main';
 import { LinkerCache, PrefixTree } from './linkerCache';
@@ -42,16 +42,37 @@ export class GlossaryLinker extends MarkdownRenderChild {
         const linkedFiles = new Set<TFile>();
         const explicitlyLinkedFiles = new Set<TFile>();
 
+        if (this.settings.excludeLinksToRealLinkedFiles) {
+            const realLinks = this.containerEl.querySelectorAll('a.internal-link[href]');
+            realLinks.forEach((link) => {
+                if (!(link instanceof HTMLAnchorElement)) {
+                    return;
+                }
+
+                const href = link.getAttribute('data-href') || link.getAttribute('href') || '';
+                const linkPath = getLinkpath(href.split('#')[0]);
+                if (!linkPath) {
+                    return;
+                }
+
+                const linkedFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, this.ctx.sourcePath);
+                if (linkedFile) {
+                    explicitlyLinkedFiles.add(linkedFile);
+                }
+            });
+        }
+
         for (const tag of tags) {
             const nodeList = this.containerEl.getElementsByTagName(tag);
             for (let index = 0; index <= nodeList.length; index++) {
-                const item = index == nodeList.length ? this.containerEl : nodeList.item(index)!;
+                const item = index == nodeList.length ? this.containerEl : nodeList.item(index);
+                if (!item) continue;
 
                 for (let childNodeIndex = 0; childNodeIndex < item.childNodes.length; childNodeIndex++) {
                     const childNode = item.childNodes[childNodeIndex];
 
                     if (childNode.nodeType === Node.TEXT_NODE) {
-                        let text = childNode.textContent || '';
+                        const text = childNode.textContent || '';
                         if (text.length === 0) continue;
 
                         this.linkerCache.reset();
@@ -62,8 +83,9 @@ export class GlossaryLinker extends MarkdownRenderChild {
                         // Iterate over every char in the text
                         for (let i = 0; i <= text.length; i) {
                             // Do this to get unicode characters as whole chars and not only half of them
-                            const codePoint = text.codePointAt(i)!;
-                            const char = i < text.length ? String.fromCodePoint(codePoint) : '\n';
+                            const char = i < text.length
+                                ? String.fromCodePoint(text.codePointAt(i) ?? text.charCodeAt(i))
+                                : '\n';
 
                             // If we are at a word boundary, get the current fitting files
                             const isWordBoundary = PrefixTree.checkWordBoundary(char); // , this.settings.wordBoundaryRegex

@@ -207,7 +207,7 @@ export class HighlightView extends ItemView {
         const PAD    = 20;
 
         let start = Math.max(0, matchStart - PAD);
-        let end   = Math.min(rawLine.length, start + WINDOW);
+        const end   = Math.min(rawLine.length, start + WINDOW);
         start     = Math.max(0, end - WINDOW);
 
         const prefix = start > 0            ? '…' : '';

@@ -6,10 +6,11 @@ import { App, MarkdownView, TFile, Vault } from 'obsidian';
 import IntervalTree from '@flatten-js/interval-tree';
 import { LinkerPluginSettings } from 'main';
 import { ExternalUpdateManager, LinkerCache, PrefixTree } from './linkerCache';
+import { matchesDirectorySetting } from './linkerInfo';
 import { VirtualMatch } from './virtualLinkDom';
 import { escapeRegex, HighlightService } from './highlightService';
 
-function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth: number = 10) {
+function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth = 10) {
     let node = child.parentNode;
     let depth = 0;
     while (node != null && depth < maxDepth) {
@@ -44,8 +45,8 @@ class AutoLinkerPlugin implements PluginValue {
     settings: LinkerPluginSettings;
     highlightService: HighlightService | null;
 
-    private lastCursorPos: number = 0;
-    private lastActiveFile: string = '';
+    private lastCursorPos = 0;
+    private lastActiveFile = '';
     private lastViewUpdate: ViewUpdate | null = null;
     private updateManager: ExternalUpdateManager;
     private updateCallback: () => void;
@@ -82,7 +83,7 @@ class AutoLinkerPlugin implements PluginValue {
         }
     }
 
-    update(update: ViewUpdate, force: boolean = false) {
+    update(update: ViewUpdate, force = false) {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
         // Check if the update is on the active view. We only need to check this, if one of the following settings is enabled
@@ -120,7 +121,7 @@ class AutoLinkerPlugin implements PluginValue {
         if (this.highlightUnsubscribe) this.highlightUnsubscribe();
     }
 
-    buildDecorations(view: EditorView, viewIsActive: boolean = true): DecorationSet {
+    buildDecorations(view: EditorView, viewIsActive = true): DecorationSet {
         const builder = new RangeSetBuilder<Decoration>();
 
         if (!this.settings.linkerActivated) {
@@ -133,8 +134,8 @@ class AutoLinkerPlugin implements PluginValue {
         // Check if the file is inside excluded folders
         const excludedFolders = this.settings.excludedDirectoriesForLinking;
         if (excludedFolders.length > 0) {
-            const path = mappedFile?.parent?.path ?? this.app.workspace.getActiveFile()?.parent?.path;
-            if (excludedFolders.includes(path ?? '')) return builder.finish();
+            const parentPath = mappedFile?.parent?.path ?? this.app.workspace.getActiveFile()?.parent?.path;
+            if (parentPath && matchesDirectorySetting(parentPath, excludedFolders)) return builder.finish();
         }
 
         // Set to exclude file that are explicitly linked
@@ -143,7 +144,7 @@ class AutoLinkerPlugin implements PluginValue {
         // Set to exclude files that are already linked by a virtual link
         const alreadyLinkedFiles = new Set<TFile>();
 
-        for (let { from, to } of view.visibleRanges) {
+        for (const { from, to } of view.visibleRanges) {
             this.linkerCache.reset();
             const text = view.state.doc.sliceString(from, to);
 
@@ -154,8 +155,9 @@ class AutoLinkerPlugin implements PluginValue {
             // Iterate over every char in the text
             for (let i = 0; i <= text.length; i) {
                 // Do this to get unicode characters as whole chars and not only half of them
-                const codePoint = text.codePointAt(i)!;
-                const char = i < text.length ? String.fromCodePoint(codePoint) : '\n';
+                const char = i < text.length
+                    ? String.fromCodePoint(text.codePointAt(i) ?? text.charCodeAt(i))
+                    : '\n';
 
                 // If we are at a word boundary, get the current fitting files
                 const isWordBoundary = PrefixTree.checkWordBoundary(char); // , this.settings.wordBoundaryRegex
@@ -222,7 +224,7 @@ class AutoLinkerPlugin implements PluginValue {
                     // const text = view.state.doc.sliceString(node.from, node.to);
 
                     for (const excludedType of excludedTypes) {
-                        if (type.contains(excludedType)) {
+                        if (type.includes(excludedType)) {
                             excludedIntervalTree.insert([node.from, node.to]);
 
                             // Types can be combined, e.g. internal-link_link-has-alias
@@ -303,8 +305,8 @@ class AutoLinkerPlugin implements PluginValue {
                 if (fixIMEProblem) {
                     needImeFix = true;
                     if (additionIsInCurrentLine && cursorPos > to) {
-                        let gapString = view.state.sliceDoc(to, cursorPos);
-                        let strBeforeAdd = view.state.sliceDoc(lineStart, from);
+                        const gapString = view.state.sliceDoc(to, cursorPos);
+                        const strBeforeAdd = view.state.sliceDoc(lineStart, from);
 
                         // Regex to check if a part of a word is at the line start, because IME problem only occurs at line start
                         // Regex matches parts that:

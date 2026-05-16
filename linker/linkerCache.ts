@@ -1,4 +1,4 @@
-import { App, getAllTags, parseFrontMatterAliases, TFile, Vault } from 'obsidian';
+import { App, getAllTags, TFile, Vault } from 'obsidian';
 
 import { LinkerPluginSettings } from 'main';
 import { LinkerMetaInfoFetcher } from './linkerInfo';
@@ -28,17 +28,17 @@ export class PrefixNode {
     parent: PrefixNode | undefined;
     children: Map<string, PrefixNode> = new Map();
     files: Set<TFile> = new Set();
-    charValue: string = '';
-    value: string = '';
-    requiresCaseMatch: boolean = false;
+    charValue = '';
+    value = '';
+    requiresCaseMatch = false;
 }
 
 export class VisitedPrefixNode {
     node: PrefixNode;
     caseIsMatched: boolean;
     startedAtWordBeginning: boolean;
-    formattingDelta: number = 0;
-    constructor(node: PrefixNode, caseIsMatched: boolean = true, startedAtWordBeginning: boolean = false) {
+    formattingDelta = 0;
+    constructor(node: PrefixNode, caseIsMatched = true, startedAtWordBeginning = false) {
         this.node = node;
         this.caseIsMatched = caseIsMatched;
         this.startedAtWordBeginning = startedAtWordBeginning;
@@ -46,14 +46,14 @@ export class VisitedPrefixNode {
 }
 
 export class MatchNode {
-    start: number = 0;
-    length: number = 0;
+    start = 0;
+    length = 0;
     files: Set<TFile> = new Set();
-    value: string = '';
-    isAlias: boolean = false;
-    caseIsMatched: boolean = true;
-    startsAtWordBoundary: boolean = false;
-    requiresCaseMatch: boolean = false;
+    value = '';
+    isAlias = false;
+    caseIsMatched = true;
+    startsAtWordBoundary = false;
+    requiresCaseMatch = false;
 
     get end(): number {
         return this.start + this.length;
@@ -138,7 +138,7 @@ export class PrefixTree {
         let node = this.root;
 
         // For each character in the name, add a node to the trie
-        for (let char of name) {
+        for (const char of name) {
             // char = char.toLowerCase();
             let child = node.children.get(char);
             if (!child) {
@@ -232,8 +232,8 @@ export class PrefixTree {
             }
         }
 
-        let aliasesWithMatchCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToMatchCase] ?? []);
-        let aliasesWithIgnoreCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToIgnoreCase] ?? []);
+        const aliasesWithMatchCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToMatchCase] ?? []);
+        const aliasesWithIgnoreCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToIgnoreCase] ?? []);
 
 
         // If aliases is not an array, convert it to an array
@@ -271,10 +271,8 @@ export class PrefixTree {
                 namesWithCaseMatch = [...names];
             }
         } else {
-            let lowerCaseNames = new Array<string>();
             if (tags.includes(this.settings.tagToMatchCase)) {
                 namesWithCaseMatch = [...names];
-                lowerCaseNames = names.filter((name) => aliasesWithIgnoreCase.has(name));
             } else {
                 const prop = this.settings.capitalLetterProportionForAutomaticMatchCase;
                 namesWithCaseMatch = [...names].filter(
@@ -361,9 +359,6 @@ export class PrefixTree {
         }
 
         for (const file of files) {
-            // Get the update time of the file
-            const mtime = file.stat.mtime;
-
             // Check if the file has been updated
             if (this.fileIsUpToDate(file)) {
                 continue;
@@ -444,7 +439,7 @@ export class PrefixTree {
         // \p{C}: Other (control chars, unassigned, etc.).
 
         // let pattern = /[\p{P}\p{Z}\p{S}\p{C}\p{Emoji_Presentation}\p{Extended_Pictographic}]/u;
-        let pattern = /[^\p{L}]/u;
+        const pattern = /[^\p{L}]/u;
 
         // if (regexString) {
         //     if (typeof regexString !== 'string') {
@@ -505,6 +500,12 @@ export class LinkerCache {
 
     clearCache() {
         this.cache.clear();
+    }
+
+    rebuildCache() {
+        this.cache.clear();
+        this.cache.updateTree();
+        this.activeFilePath = this.app.workspace.getActiveFile()?.path;
     }
 
     reset() {

@@ -53,6 +53,13 @@ export class Plugin {}
 export class PluginSettingTab {}
 export class Setting {}
 export class Menu {}
+export class WorkspaceLeaf {}
+export class ItemView {
+    contentEl: HTMLElement;
+    constructor(_leaf?: WorkspaceLeaf) {
+        this.contentEl = globalThis.document?.createElement?.('div') ?? ({} as HTMLElement);
+    }
+}
 export class MarkdownView {}
 export class MarkdownRenderChild {
     constructor(public containerEl: HTMLElement) {}

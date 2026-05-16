@@ -1,5 +1,5 @@
 import { PrefixTree, ExternalUpdateManager } from '../linker/linkerCache';
-import { TFile } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { LinkerPluginSettings } from '../main';
 
 const BASE_SETTINGS: LinkerPluginSettings = {
@@ -51,22 +51,42 @@ function makeFile(filePath: string): TFile {
     } as unknown as TFile;
 }
 
-function makeApp(files: TFile[] = []): any {
-    const fileCaches = new Map<string, any>();
-    const fileMap = new Map<string, TFile>(files.map(f => [f.path, f]));
-    const app = {
+type MockFileCache = {
+    frontmatter: Record<string, unknown> | null;
+    tags: unknown;
+} | null;
+
+type MockApp = {
+    vault: {
+        getMarkdownFiles: () => TFile[];
+        getFileByPath: (path: string) => TFile | null;
+    };
+    metadataCache: {
+        getFileCache: (file: TFile) => MockFileCache;
+    };
+    workspace: {
+        getActiveFile: () => TFile | null;
+    };
+    _setCache: (path: string, cache: MockFileCache) => void;
+    _updateFiles: (newFiles: TFile[]) => void;
+};
+
+function makeApp(files: TFile[] = []): MockApp {
+    const fileCaches = new Map<string, MockFileCache>();
+    const fileMap = new Map<string, TFile>(files.map((file) => [file.path, file]));
+    const app: MockApp = {
         vault: {
             getMarkdownFiles: () => files,
-            getFileByPath: (p: string) => fileMap.get(p) ?? null,
+            getFileByPath: (path: string) => fileMap.get(path) ?? null,
         },
-        metadataCache: { getFileCache: (f: TFile) => fileCaches.get(f.path) ?? null },
+        metadataCache: { getFileCache: (file: TFile) => fileCaches.get(file.path) ?? null },
         workspace: { getActiveFile: () => null },
-        _setCache(path: string, cache: any) { fileCaches.set(path, cache); },
+        _setCache(path: string, cache: MockFileCache) { fileCaches.set(path, cache); },
         _updateFiles(newFiles: TFile[]) {
             files.length = 0;
             files.push(...newFiles);
             fileMap.clear();
-            newFiles.forEach(f => fileMap.set(f.path, f));
+            newFiles.forEach((file) => fileMap.set(file.path, file));
         },
     };
     return app;
@@ -77,7 +97,7 @@ function buildTree(files: TFile[], settings = BASE_SETTINGS): PrefixTree {
     for (const f of files) {
         app._setCache(f.path, { frontmatter: null, tags: null });
     }
-    return new PrefixTree(app, settings);
+    return new PrefixTree(app as unknown as App, settings);
 }
 
 /** Walk `text` through the trie and return true if any match is found. */
@@ -128,7 +148,10 @@ describe('PrefixTree.checkWordBoundary', () => {
 // PrefixTree.isUpperCaseString (private static — accessed via cast)
 // ---------------------------------------------------------------------------
 describe('PrefixTree.isUpperCaseString', () => {
-    const isUpper = (v: any, pct = 0.75) => (PrefixTree as any).isUpperCaseString(v, pct);
+    const prefixTreePrivate = PrefixTree as unknown as {
+        isUpperCaseString: (value: unknown, upperCasePart?: number) => boolean;
+    };
+    const isUpper = (value: unknown, pct = 0.75) => prefixTreePrivate.isUpperCaseString(value, pct);
 
     it('returns true for all-uppercase abbreviations', () => {
         expect(isUpper('CPU')).toBe(true);
@@ -198,7 +221,7 @@ describe('PrefixTree trie search', () => {
 
         // Simulate vault no longer containing the file
         const emptyApp = makeApp([]);
-        tree.app = emptyApp;
+        tree.app = emptyApp as unknown as App;
         tree.updateTree();
 
         expect(findInText(tree, 'Enzyme ')).toBe(false);
@@ -207,7 +230,7 @@ describe('PrefixTree trie search', () => {
     it('finds a file after it is added via updateTree', () => {
         // Use a shared app so tree.fetcher.app and tree.app stay in sync
         const app = makeApp([]);
-        const tree = new PrefixTree(app, BASE_SETTINGS);
+        const tree = new PrefixTree(app as unknown as App, BASE_SETTINGS);
         expect(findInText(tree, 'Ribosome ')).toBe(false);
 
         const file = makeFile('Glossary/Ribosome.md');
@@ -225,7 +248,7 @@ describe('PrefixTree trie search', () => {
             frontmatter: { aliases: ['DNA'] },
             tags: null,
         });
-        const tree = new PrefixTree(app, BASE_SETTINGS);
+        const tree = new PrefixTree(app as unknown as App, BASE_SETTINGS);
         expect(findInText(tree, 'DNA ')).toBe(true);
     });
 });

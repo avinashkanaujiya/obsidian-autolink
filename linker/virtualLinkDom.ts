@@ -78,7 +78,7 @@ export class VirtualMatch {
                 linkText += '|';
             }
 
-            let linkHref = file.path;
+            const linkHref = file.path;
             const link = this.getLinkAnchorElement(linkText, linkHref);
             spanReferences.appendChild(link);
 
@@ -102,7 +102,7 @@ export class VirtualMatch {
     getIconSpan() {
         const suffix = this.isAlias ? this.settings.virtualLinkAliasSuffix : this.settings.virtualLinkSuffix;
         if ((suffix?.length ?? 0) > 0) {
-            let icon = document.createElement('sup');
+            const icon = document.createElement('sup');
             icon.textContent = suffix;
             icon.classList.add('linker-suffix-icon');
             return icon;
@@ -138,7 +138,7 @@ export class VirtualMatch {
         });
     }
 
-    static filterOverlapping(matches: VirtualMatch[], onlyLinkOnce: boolean = true, excludedIntervalTree?: IntervalTree): VirtualMatch[] {
+    static filterOverlapping(matches: VirtualMatch[], onlyLinkOnce = true, excludedIntervalTree?: IntervalTree): VirtualMatch[] {
         const matchesToDelete: Map<number, boolean> = new Map();
 
         // Delete additions that overlap
