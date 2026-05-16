@@ -242,7 +242,9 @@ export default class LinkerPlugin extends Plugin {
 
         this.registerMarkdownPostProcessor((element, context) => {
             const searchText = this.highlightService.getActive(context.sourcePath);
-            if (searchText) applyHighlightToDOM(element, searchText);
+            if (searchText) {
+                applyHighlightToDOM(element, searchText, context.getSectionInfo(element));
+            }
         });
 
         // Register the live linker for the live edit mode
@@ -295,10 +297,20 @@ export default class LinkerPlugin extends Plugin {
                     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
                     if (!view || view.file?.path !== file.path) return;
 
+                    const previewMode = view.previewMode as {
+                        containerEl?: HTMLElement;
+                        rerender?: (force?: boolean) => void;
+                    } | undefined;
+
+                    if (view.getMode?.() === 'preview' && typeof previewMode?.rerender === 'function') {
+                        previewMode.rerender(true);
+                        return;
+                    }
+
                     // Prefer the internal previewMode container; fall back to
                     // well-known CSS classes so we never apply to toolbar DOM.
                     const readingEl: HTMLElement | null =
-                        view.previewMode?.containerEl ??
+                        previewMode?.containerEl ??
                         view.contentEl.querySelector('.markdown-reading-view') ??
                         view.contentEl.querySelector('.markdown-preview-view');
 

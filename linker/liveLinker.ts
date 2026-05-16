@@ -24,15 +24,11 @@ function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth = 10) {
 }
 
 export class VirtualLinkWidget extends WidgetType {
-    constructor(public match: VirtualMatch, public isHighlighted: boolean = false) {
+    constructor(public match: VirtualMatch, public highlightText: string | null = null) {
         super();
     }
     toDOM(_view: EditorView): HTMLElement {
-        const el = this.match.getCompleteLinkElement();
-        if (this.isHighlighted) {
-            el.classList.add('autolink-highlight');
-        }
-        return el;
+        return this.match.getCompleteLinkElement(this.highlightText);
     }
 }
 
@@ -146,6 +142,7 @@ class AutoLinkerPlugin implements PluginValue {
 
         // Highlight at most one occurrence per visible document line.
         const highlightedLineNumbers = new Set<number>();
+        const duplicateLineMatchKeys = new Set<string>();
 
         for (const { from, to } of view.visibleRanges) {
             this.linkerCache.reset();
@@ -269,6 +266,7 @@ class AutoLinkerPlugin implements PluginValue {
             matches = VirtualMatch.filterDuplicateLineMatches(
                 matches,
                 (match) => view.state.doc.lineAt(match.from).number,
+                duplicateLineMatchKeys,
             );
 
             // Store the files that are linked by a virtual link
@@ -305,9 +303,6 @@ class AutoLinkerPlugin implements PluginValue {
 
             type WidgetAddition = { match: VirtualMatch; from: number; to: number };
 
-            // Set of virtual-link ranges (serialised as "from-to") so we can
-            // avoid adding duplicate mark decorations over replaced ranges.
-            const virtualLinkRangeKeys = new Set<string>();
             const widgetAdditions: WidgetAddition[] = [];
 
             matches.forEach((addition) => {
@@ -351,21 +346,27 @@ class AutoLinkerPlugin implements PluginValue {
 
                 if (!cursorNearby && !needImeFix && !(excludeLine && additionIsInCurrentLine)) {
                     widgetAdditions.push({ match: addition, from, to });
-                    virtualLinkRangeKeys.add(`${from}-${to}`);
                 }
             });
 
-            const highlightedVirtualLinkKeys = new Set<string>();
+            const highlightedVirtualLinkTexts = new Map<string, string>();
 
             if (highlightTextLower && highlightText) {
-                const firstHighlightableWidgetByLine = new Map<number, WidgetAddition>();
+                const firstHighlightableWidgetByLine = new Map<number, { addition: WidgetAddition; matchIndex: number }>();
                 for (const widgetAddition of widgetAdditions) {
-                    if (widgetAddition.match.originText.toLowerCase() !== highlightTextLower) continue;
                     if (fmEndOffset >= 0 && widgetAddition.from <= fmEndOffset) continue;
 
+                    const widgetMatch = findFirstMatch(widgetAddition.match.originText, highlightText);
+                    if (!widgetMatch) continue;
+
                     const lineNumber = view.state.doc.lineAt(widgetAddition.from).number;
-                    if (!firstHighlightableWidgetByLine.has(lineNumber)) {
-                        firstHighlightableWidgetByLine.set(lineNumber, widgetAddition);
+                    const widgetPosition = widgetAddition.from + widgetMatch.index;
+                    const existing = firstHighlightableWidgetByLine.get(lineNumber);
+                    if (!existing || widgetPosition < existing.addition.from + existing.matchIndex) {
+                        firstHighlightableWidgetByLine.set(lineNumber, {
+                            addition: widgetAddition,
+                            matchIndex: widgetMatch.index,
+                        });
                     }
                 }
 
@@ -381,20 +382,19 @@ class AutoLinkerPlugin implements PluginValue {
 
                     if (highlightedLineNumbers.has(lineNumber)) continue;
 
-                    const widgetAddition = firstHighlightableWidgetByLine.get(lineNumber) ?? null;
+                    const widgetCandidate = firstHighlightableWidgetByLine.get(lineNumber) ?? null;
+                    const widgetPosition = widgetCandidate
+                        ? widgetCandidate.addition.from + widgetCandidate.matchIndex
+                        : null;
                     const plainMatch = findFirstMatch(lineText, highlightText);
                     const plainFrom = plainMatch ? lineStartOffset + plainMatch.index : null;
                     const plainTo = plainMatch && plainFrom != null ? plainFrom + plainMatch.matchText.length : null;
 
-                    let highlightVirtualLink = false;
-                    if (widgetAddition && plainFrom != null) {
-                        highlightVirtualLink = widgetAddition.from <= plainFrom;
-                    } else if (widgetAddition) {
-                        highlightVirtualLink = true;
-                    }
-
-                    if (highlightVirtualLink && widgetAddition) {
-                        highlightedVirtualLinkKeys.add(`${widgetAddition.from}-${widgetAddition.to}`);
+                    if (widgetCandidate && (plainFrom == null || widgetPosition == null || widgetPosition <= plainFrom)) {
+                        highlightedVirtualLinkTexts.set(
+                            `${widgetCandidate.addition.from}-${widgetCandidate.addition.to}`,
+                            highlightText,
+                        );
                         highlightedLineNumbers.add(lineNumber);
                         continue;
                     }
@@ -402,16 +402,11 @@ class AutoLinkerPlugin implements PluginValue {
                     if (plainFrom == null || plainTo == null) continue;
                     if (fmEndOffset >= 0 && plainFrom <= fmEndOffset) continue;
 
-                    const plainKey = `${plainFrom}-${plainTo}`;
-                    if (virtualLinkRangeKeys.has(plainKey)) {
-                        highlightedVirtualLinkKeys.add(plainKey);
-                    } else {
-                        decoSpecs.push({
-                            from: plainFrom,
-                            to: plainTo,
-                            deco: Decoration.mark({ class: 'autolink-highlight' }),
-                        });
-                    }
+                    decoSpecs.push({
+                        from: plainFrom,
+                        to: plainTo,
+                        deco: Decoration.mark({ class: 'autolink-highlight' }),
+                    });
                     highlightedLineNumbers.add(lineNumber);
                 }
             }
@@ -422,7 +417,10 @@ class AutoLinkerPlugin implements PluginValue {
                     from: widgetAddition.from,
                     to: widgetAddition.to,
                     deco: Decoration.replace({
-                        widget: new VirtualLinkWidget(widgetAddition.match, highlightedVirtualLinkKeys.has(key)),
+                        widget: new VirtualLinkWidget(
+                            widgetAddition.match,
+                            highlightedVirtualLinkTexts.get(key) ?? null,
+                        ),
                     }),
                 });
             }

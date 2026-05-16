@@ -1,3 +1,5 @@
+import type { MarkdownSectionInformation } from 'obsidian';
+
 /**
  * HighlightService: tracks which search text should be highlighted in a note
  * after the user navigates to it by clicking a virtual link with display text.
@@ -92,6 +94,52 @@ export interface TextMatch {
     matchText: string;
 }
 
+export type HighlightSectionInfo = Pick<MarkdownSectionInformation, 'text' | 'lineStart'>;
+
+export class SectionSourceMapper {
+    private cursor = 0;
+    private readonly lineOffsets: number[] = [0];
+
+    constructor(
+        private readonly sourceText: string,
+        private readonly lineStart = 0,
+    ) {
+        for (let i = 0; i < sourceText.length; i++) {
+            if (sourceText.charCodeAt(i) === 10) {
+                this.lineOffsets.push(i + 1);
+            }
+        }
+    }
+
+    locate(text: string): number | null {
+        if (!text) return this.cursor;
+
+        const index = this.sourceText.indexOf(text, this.cursor);
+        if (index === -1) return null;
+
+        this.cursor = index + text.length;
+        return index;
+    }
+
+    lineNumberAt(sectionOffset: number): number {
+        let low = 0;
+        let high = this.lineOffsets.length - 1;
+        let lineIndex = 0;
+
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            if (this.lineOffsets[mid] <= sectionOffset) {
+                lineIndex = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+
+        return this.lineStart + lineIndex;
+    }
+}
+
 /**
  * Finds the first case-insensitive match of `searchText` in `text`.
  */
@@ -109,11 +157,16 @@ export function findFirstMatch(text: string, searchText: string): TextMatch | nu
 
 /**
  * Inject `<mark class="autolink-highlight">` around the first case-insensitive
- * occurrence of `searchText` per rendered line segment inside `containerEl`,
- * then scroll to the first match. Calling this again removes previous marks
- * before adding new ones.
+ * occurrence of `searchText` per source line inside `containerEl`, when source
+ * section information is available. Falls back to rendered-line heuristics when
+ * section info is unavailable. Calling this again removes previous marks before
+ * adding new ones.
  */
-export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string): void {
+export function applyHighlightToDOM(
+    containerEl: HTMLElement,
+    searchText: string,
+    sectionInfo: HighlightSectionInfo | null = null,
+): void {
     // Remove previous highlights so repeated calls are idempotent.
     containerEl.querySelectorAll('mark.autolink-highlight').forEach(mark => {
         const parent = mark.parentNode;
@@ -124,13 +177,17 @@ export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string
 
     if (!searchText) return;
 
+    const regex = new RegExp(escapeRegex(searchText), 'gi');
+    const sourceMapper = sectionInfo ? new SectionSourceMapper(sectionInfo.text, sectionInfo.lineStart) : null;
+    const highlightedSourceLines = new Set<number>();
+
     // Walk only plain text nodes; skip code, pre, script, style, and the
     // Obsidian Properties / frontmatter panel (.metadata-container).
     const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
             const parent = node.parentElement;
             if (!parent) return NodeFilter.FILTER_REJECT;
-            if (parent.closest('code, pre, script, style, .metadata-container'))
+            if (parent.closest('code, pre, script, style, .metadata-container, a.internal-link:not(.virtual-link-a), a.external-link, .tag'))
                 return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
         },
@@ -149,40 +206,53 @@ export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string
         const parent = textNode.parentNode;
         if (!parent) continue;
 
+        const mappedStart = sourceMapper?.locate(text) ?? null;
+        const fallbackHighlightedRenderedLines = new Set<number>();
         const frag = document.createDocumentFragment();
         let replaced = false;
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
 
-        for (const segment of text.split(/(\n)/)) {
-            if (segment === '\n') {
-                frag.appendChild(document.createTextNode(segment));
+        regex.lastIndex = 0;
+        while ((match = regex.exec(text)) !== null) {
+            let shouldHighlight = false;
+
+            if (mappedStart != null && sourceMapper) {
+                const sourceLine = sourceMapper.lineNumberAt(mappedStart + match.index);
+                if (!highlightedSourceLines.has(sourceLine)) {
+                    highlightedSourceLines.add(sourceLine);
+                    shouldHighlight = true;
+                }
+            } else {
+                const renderedLine = (text.slice(0, match.index).match(/\n/g) ?? []).length;
+                if (!fallbackHighlightedRenderedLines.has(renderedLine)) {
+                    fallbackHighlightedRenderedLines.add(renderedLine);
+                    shouldHighlight = true;
+                }
+            }
+
+            if (!shouldHighlight) {
                 continue;
             }
 
-            const match = findFirstMatch(segment, searchText);
-            if (!match) {
-                frag.appendChild(document.createTextNode(segment));
-                continue;
-            }
-
-            if (match.index > 0) {
-                frag.appendChild(document.createTextNode(segment.slice(0, match.index)));
+            if (match.index > lastIndex) {
+                frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
             }
 
             const mark = document.createElement('mark');
             mark.className = 'autolink-highlight';
-            mark.textContent = match.matchText;
+            mark.textContent = match[0];
             frag.appendChild(mark);
             if (!firstMark) firstMark = mark;
 
-            const afterIndex = match.index + match.matchText.length;
-            if (afterIndex < segment.length) {
-                frag.appendChild(document.createTextNode(segment.slice(afterIndex)));
-            }
-
+            lastIndex = match.index + match[0].length;
             replaced = true;
         }
 
         if (replaced) {
+            if (lastIndex < text.length) {
+                frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+            }
             parent.replaceChild(frag, textNode);
         }
     }

@@ -1,6 +1,7 @@
 import { App, getLinkpath, MarkdownPostProcessorContext, MarkdownRenderChild, TFile } from 'obsidian';
 
 import { LinkerPluginSettings } from '../main';
+import { SectionSourceMapper } from './highlightService';
 import { LinkerCache, PrefixTree } from './linkerCache';
 import { VirtualMatch } from './virtualLinkDom';
 
@@ -41,6 +42,11 @@ export class GlossaryLinker extends MarkdownRenderChild {
         // Maybe there is a good and performant solution to this problem
         const linkedFiles = new Set<TFile>();
         const explicitlyLinkedFiles = new Set<TFile>();
+        const duplicateLineMatchKeys = new Set<string>();
+        const sectionInfo = this.ctx.getSectionInfo(this.containerEl);
+        const sectionSourceMapper = sectionInfo
+            ? new SectionSourceMapper(sectionInfo.text, sectionInfo.lineStart)
+            : null;
 
         if (this.settings.excludeLinksToRealLinkedFiles) {
             const realLinks = this.containerEl.querySelectorAll('a.internal-link[href]');
@@ -74,6 +80,8 @@ export class GlossaryLinker extends MarkdownRenderChild {
                     if (childNode.nodeType === Node.TEXT_NODE) {
                         const text = childNode.textContent || '';
                         if (text.length === 0) continue;
+
+                        const mappedStart = sectionSourceMapper?.locate(text) ?? null;
 
                         this.linkerCache.reset();
                         let matches: VirtualMatch[] = [];
@@ -146,11 +154,17 @@ export class GlossaryLinker extends MarkdownRenderChild {
                         // Additions are sorted by from position and after that by length, we want to keep longer additions
                         matches = VirtualMatch.filterOverlapping(matches, this.settings.onlyLinkOnce);
 
-                        // Keep only the first identical virtual link per line
-                        // inside the current rendered text node.
+                        // Keep only the first identical virtual link per source
+                        // line across the whole rendered section.
                         matches = VirtualMatch.filterDuplicateLineMatches(
                             matches,
-                            (match) => (text.slice(0, match.from).match(/\n/g) ?? []).length,
+                            (match) => {
+                                if (mappedStart != null && sectionSourceMapper) {
+                                    return sectionSourceMapper.lineNumberAt(mappedStart + match.from);
+                                }
+                                return (text.slice(0, match.from).match(/\n/g) ?? []).length;
+                            },
+                            duplicateLineMatchKeys,
                         );
 
                         const parent = childNode.parentElement;

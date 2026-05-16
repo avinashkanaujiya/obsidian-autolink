@@ -208,4 +208,23 @@ describe('VirtualMatch.filterDuplicateLineMatches', () => {
         const result = VirtualMatch.filterDuplicateLineMatches(matches, () => 1);
         expect(result.map((match) => match.id)).toEqual([0, 1]);
     });
+
+    it('can deduplicate across multiple calls when a shared seen set is provided', () => {
+        const f = makeFile('plato.md');
+        const seen = new Set<string>();
+
+        const first = VirtualMatch.filterDuplicateLineMatches(
+            [makeMatch(0, 0, 5, [f], BASE_SETTINGS, 'Plato')],
+            () => 4,
+            seen,
+        );
+        const second = VirtualMatch.filterDuplicateLineMatches(
+            [makeMatch(1, 12, 17, [f], BASE_SETTINGS, 'Plato')],
+            () => 4,
+            seen,
+        );
+
+        expect(first.map((match) => match.id)).toEqual([0]);
+        expect(second).toEqual([]);
+    });
 });

@@ -1,6 +1,7 @@
 import IntervalTree from '@flatten-js/interval-tree';
 import { LinkerPluginSettings } from 'main';
 import { TFile } from 'obsidian';
+import { findFirstMatch } from './highlightService';
 
 export class VirtualMatch {
     constructor(
@@ -18,10 +19,10 @@ export class VirtualMatch {
     // DOM methods
     /////////////////////////////////////////////////
 
-    getCompleteLinkElement() {
+    getCompleteLinkElement(highlightText: string | null = null) {
         const span = this.getLinkRootSpan();
         const firstPath = this.files.length > 0 ? this.files[0].path: ""; 
-        span.appendChild(this.getLinkAnchorElement(this.originText, firstPath));
+        span.appendChild(this.getLinkAnchorElement(this.originText, firstPath, highlightText));
         if (this.files.length > 1) {
             if (!this.isSubWord) {
                 span.appendChild(this.getMultipleReferencesIndicatorSpan());
@@ -36,16 +37,36 @@ export class VirtualMatch {
         return span;
     }
 
-    getLinkAnchorElement(linkText: string, href: string) {
+    getLinkAnchorElement(linkText: string, href: string, highlightText: string | null = null) {
         const link = document.createElement('a');
         link.href = href;
-        link.textContent = linkText;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.setAttribute('from', this.from.toString());
         link.setAttribute('to', this.to.toString());
         link.setAttribute('origin-text', this.originText);
         link.classList.add('internal-link', 'virtual-link-a');
+
+        const highlightMatch = highlightText ? findFirstMatch(linkText, highlightText) : null;
+        if (!highlightMatch) {
+            link.textContent = linkText;
+            return link;
+        }
+
+        if (highlightMatch.index > 0) {
+            link.appendChild(document.createTextNode(linkText.slice(0, highlightMatch.index)));
+        }
+
+        const mark = document.createElement('span');
+        mark.classList.add('autolink-highlight');
+        mark.textContent = highlightMatch.matchText;
+        link.appendChild(mark);
+
+        const afterIndex = highlightMatch.index + highlightMatch.matchText.length;
+        if (afterIndex < linkText.length) {
+            link.appendChild(document.createTextNode(linkText.slice(afterIndex)));
+        }
+
         return link;
     }
 
@@ -184,9 +205,11 @@ export class VirtualMatch {
         return matches.filter((match) => !matchesToDelete.has(match.id));
     }
 
-    static filterDuplicateLineMatches(matches: VirtualMatch[], getLineNumber: (match: VirtualMatch) => number): VirtualMatch[] {
-        const seenKeys = new Set<string>();
-
+    static filterDuplicateLineMatches(
+        matches: VirtualMatch[],
+        getLineNumber: (match: VirtualMatch) => number,
+        seenKeys: Set<string> = new Set(),
+    ): VirtualMatch[] {
         return matches.filter((match) => {
             const fileKey = match.files
                 .map((file) => file.path)
