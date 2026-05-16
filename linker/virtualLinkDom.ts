@@ -23,12 +23,9 @@ export class VirtualMatch {
 
     getCompleteLinkElement(highlightText: string | null = null) {
         const span = this.getLinkRootSpan();
-        const firstPath = this.files.length > 0 ? this.files[0].path: ""; 
+        const firstPath = this.files.length > 0 ? this.files[0].path : '';
         span.appendChild(this.getLinkAnchorElement(this.originText, firstPath, highlightText));
         if (this.files.length > 1) {
-            if (!this.isSubWord) {
-                span.appendChild(this.getMultipleReferencesIndicatorSpan());
-            }
             span.appendChild(this.getMultipleReferencesSpan());
         }
 
@@ -121,13 +118,6 @@ export class VirtualMatch {
         spanReferences.appendChild(closingBracket);
 
         return spanReferences;
-    }
-
-    getMultipleReferencesIndicatorSpan() {
-        const spanIndicator = document.createElement('span');
-        spanIndicator.textContent = ' [...]';
-        spanIndicator.classList.add('multiple-files-indicator');
-        return spanIndicator;
     }
 
     getIconSpan() {

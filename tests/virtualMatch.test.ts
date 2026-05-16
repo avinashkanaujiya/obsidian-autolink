@@ -62,6 +62,69 @@ function makeMatch(
     return new VirtualMatch(id, originText, from, to, files, false, false, settings);
 }
 
+type MockTextNode = {
+    nodeType: 3;
+    textContent: string;
+};
+
+type MockElement = {
+    tagName: string;
+    children: Array<MockElement | MockTextNode>;
+    textContent: string;
+    classNames: string[];
+    attributes: Record<string, string>;
+    classList: {
+        add: (...tokens: string[]) => void;
+        contains: (token: string) => boolean;
+    };
+    appendChild: (child: MockElement | MockTextNode) => MockElement | MockTextNode;
+    setAttribute: (name: string, value: string) => void;
+    getAttribute: (name: string) => string | null;
+    href?: string;
+    target?: string;
+    rel?: string;
+};
+
+function createMockElement(tagName: string): MockElement {
+    const element = {
+        tagName,
+        children: [],
+        textContent: '',
+        classNames: [],
+        attributes: {},
+        classList: {
+            add: (...tokens: string[]) => {
+                element.classNames.push(...tokens);
+            },
+            contains: (token: string) => element.classNames.includes(token),
+        },
+        appendChild: (child: MockElement | MockTextNode) => {
+            element.children.push(child);
+            return child;
+        },
+        setAttribute: (name: string, value: string) => {
+            element.attributes[name] = value;
+        },
+        getAttribute: (name: string) => element.attributes[name] ?? null,
+    } as MockElement;
+
+    return element;
+}
+
+function createMockDocument() {
+    return {
+        createElement: (tagName: string) => createMockElement(tagName),
+        createTextNode: (text: string): MockTextNode => ({
+            nodeType: 3,
+            textContent: text,
+        }),
+    };
+}
+
+function hasClass(node: MockElement | MockTextNode, className: string): node is MockElement {
+    return 'classNames' in node && node.classNames.includes(className);
+}
+
 // ---------------------------------------------------------------------------
 // VirtualMatch.sort
 // ---------------------------------------------------------------------------
@@ -170,6 +233,27 @@ describe('VirtualMatch.filterOverlapping', () => {
         const f2 = makeFile('c.md');
         const matches = [makeMatch(0, 0, 5, [f1]), makeMatch(1, 5, 10, [f2])];
         expect(VirtualMatch.filterOverlapping(matches, false)).toHaveLength(2);
+    });
+});
+
+describe('VirtualMatch DOM rendering', () => {
+    const testGlobal = global as any;
+    const originalDocument = testGlobal.document;
+
+    beforeEach(() => {
+        testGlobal.document = createMockDocument();
+    });
+
+    afterEach(() => {
+        testGlobal.document = originalDocument;
+    });
+
+    it('keeps the multi-candidate chooser hidden until hover by omitting the placeholder suffix', () => {
+        const match = makeMatch(0, 0, 5, [makeFile('a.md'), makeFile('b.md')]);
+        const root = match.getCompleteLinkElement() as unknown as MockElement;
+
+        expect(root.children.some((child) => hasClass(child, 'multiple-files-indicator'))).toBe(false);
+        expect(root.children.some((child) => hasClass(child, 'multiple-files-references'))).toBe(true);
     });
 });
 

@@ -107,7 +107,7 @@ You can disable links for the current line you are typing.
 
 Any created virtual link will be appended with this suffix. This is useful to distinguish between real and virtual links.
 By default, the suffix is "🔗".
-When a virtual link points to multiple candidate notes, the numbered chooser now includes an `oa` entry first, which opens all matched notes in sequence.
+When a virtual link points to multiple candidate notes, the numbered chooser now includes an `oa` entry first, which opens all matched notes in sequence. Unless "Always show multiple references" is enabled, that chooser stays hidden until you hover the virtual link.
 
 By default (and if the default styling is toggled on in the settings), the links inherit the surrounding text styling and add a very faint dashed underline so they blend into surrounding text.
 When you hover a virtual link, the surrounding text styling is preserved and the underline becomes solid. Display-text highlights still use the current theme accent.
