@@ -1,4 +1,4 @@
-import { ItemView, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
 import { HighlightService, escapeRegex } from './highlightService';
 
 export const HIGHLIGHT_VIEW_TYPE = 'autolink-highlight-view';
@@ -37,9 +37,15 @@ export class HighlightView extends ItemView {
             this.refresh();
         });
 
-        // Refresh when the user switches notes.
+        // Refresh when the user switches panes or changes the file inside the
+        // same pane. active-leaf-change alone misses tab switches within the
+        // current leaf, while file-open alone misses focus changes between
+        // already-open panes.
         this.registerEvent(
             this.app.workspace.on('active-leaf-change', () => this.refresh())
+        );
+        this.registerEvent(
+            this.app.workspace.on('file-open', () => this.refresh())
         );
 
         await this.refresh();
@@ -54,25 +60,23 @@ export class HighlightView extends ItemView {
     // Core refresh
 
     async refresh(): Promise<void> {
-        // ── Find a view with an active highlight ─────────────────────────────
+        // ── Find the note the user is actually reading ───────────────────────
         // IMPORTANT: do NOT use getActiveViewOfType(MarkdownView) — it returns
-        // null whenever this sidebar panel itself is the focused leaf.  We scan
-        // all leaves to find the note with an active highlight regardless of
-        // which pane is currently focused.
-        const target = this.findHighlightedView();
+        // null whenever this sidebar panel itself is the focused leaf. Instead,
+        // we resolve the most recently active Markdown leaf and only show
+        // highlights for that visible note.
+        const targetView = this.findCurrentVisibleMarkdownView();
+        const file = targetView?.file ?? null;
+        const searchText = file ? this.hs.getActive(file.path) : undefined;
 
         // ── Nothing to show ──────────────────────────────────────────────────
-        if (!target) {
+        if (!targetView || !file || !searchText) {
             this.renderedFilePath   = null;
             this.renderedSearchText = null;
             this.contentEl.empty();
             this.renderEmpty('No active highlights.\nClick a virtual link to highlight text here.');
             return;
         }
-
-        const targetView = target.view;
-        const searchText = target.searchText;
-        const file       = target.file;
 
         // Skip re-render if we are already showing this file + search text.
         if (file.path === this.renderedFilePath && searchText === this.renderedSearchText) {
@@ -128,23 +132,34 @@ export class HighlightView extends ItemView {
     }
 
     // -------------------------------------------------------------------------
-    // Finding the view with an active highlight
+    // Finding the currently visible note
 
     /**
-     * Scans every open leaf and returns the first MarkdownView that has an
-     * active highlight.  Returns null if none exist.
+     * Returns the Markdown view whose contents are currently visible to the
+     * user, even if this sidebar view has focus.
      *
-     * Typed with a concrete return object so TypeScript's control-flow
-     * narrowing doesn't collapse the caller's local variables to 'never'.
+     * We prefer getMostRecentLeaf() because it tracks the note pane the user
+     * was just reading while a sidebar leaf is active. If that is unavailable,
+     * we fall back to getActiveFile() and locate the matching Markdown leaf.
      */
-    private findHighlightedView(): { view: MarkdownView; file: TFile; searchText: string } | null {
+    private findCurrentVisibleMarkdownView(): MarkdownView | null {
+        const recentLeaf = this.app.workspace.getMostRecentLeaf?.();
+        const recentView = recentLeaf?.view;
+        if (recentView instanceof MarkdownView && recentView.file) {
+            return recentView;
+        }
+
+        const activeFile = this.app.workspace.getActiveFile?.();
+        if (!activeFile) return null;
+
         const leaves = this.app.workspace.getLeavesOfType('markdown');
         for (const leaf of leaves) {
-            const v = leaf.view as MarkdownView;
-            if (!v.file) continue;
-            const st = this.hs.getActive(v.file.path);
-            if (st) return { view: v, file: v.file, searchText: st };
+            const view = leaf.view;
+            if (view instanceof MarkdownView && view.file?.path === activeFile.path) {
+                return view;
+            }
         }
+
         return null;
     }
 
@@ -263,8 +278,9 @@ export class HighlightView extends ItemView {
         // ── Bring the note leaf into focus LAST ───────────────────────────────
         // We do this after the scroll calls so the scroll is already queued
         // before focus triggers active-leaf-change → refresh.
-        // Because refresh() now uses iterateAllLeaves (not getActiveViewOfType),
-        // bringing this leaf into focus no longer clears the sidebar list.
+        // Because refresh() now resolves the most recently active Markdown
+        // leaf (instead of the focused sidebar leaf), bringing this leaf into
+        // focus no longer clears the sidebar list.
         this.app.workspace.setActiveLeaf(view.leaf, { focus: true });
     }
 }
