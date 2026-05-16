@@ -6,14 +6,13 @@
 
 /* ── Default virtual-link appearance ─────────────────────────────────────── */
 
-/* Keep both default and hover text close to surrounding text. */
+/* Inherit surrounding inline styling so virtual links don't override it. */
 .virtual-link-default {
-    color: var(--text-normal);
-    transition: color 0.15s ease;
+    color: inherit;
 }
 
 .virtual-link-default:hover {
-    color: var(--text-normal);
+    color: inherit;
 }
 
 /* The clickable anchor – blend into the text flow with a dashed underline. */
