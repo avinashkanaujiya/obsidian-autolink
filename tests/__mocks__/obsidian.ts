@@ -54,6 +54,11 @@ export class PluginSettingTab {}
 export class Setting {}
 export class Menu {}
 export class WorkspaceLeaf {}
+export class Keymap {
+    static isModEvent(evt?: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean }): boolean {
+        return Boolean(evt?.ctrlKey || evt?.metaKey || evt?.shiftKey);
+    }
+}
 export class ItemView {
     contentEl: HTMLElement;
     constructor(_leaf?: WorkspaceLeaf) {

@@ -1,8 +1,9 @@
 import LinkerPlugin, {
     buildRelativeVaultPath,
+    handleVirtualLinkClickEvent,
     LinkerPluginSettings,
     normalizeFrontmatterTags,
-} from '../main';
+} from 'main';
 import { TFile } from 'obsidian';
 
 const BASE_SETTINGS: LinkerPluginSettings = {
@@ -114,5 +115,119 @@ describe('LinkerPlugin.buildRealLink', () => {
 
         const targetFile = makeFile('Notes/Target.md');
         expect(plugin.buildRealLink(targetFile, 'Notes/Source.md', 'Shown text')).toBe('[[Target|Shown text]]');
+    });
+});
+
+describe('handleVirtualLinkClickEvent', () => {
+    it('opens the clicked virtual link explicitly and stores the pending highlight', async () => {
+        const app = {
+            workspace: {
+                getActiveFile: () => makeFile('Notes/Source.md'),
+                openLinkText: jest.fn(async () => undefined),
+            },
+        };
+        const highlightService = {
+            setPending: jest.fn(),
+        };
+
+        const anchor = {
+            getAttribute: (name: string) => {
+                if (name === 'href') return 'Notes/Target.md';
+                if (name === 'origin-text') return 'Target';
+                return null;
+            },
+        };
+
+        const event = {
+            button: 0,
+            target: {
+                closest: (selector: string) => selector === '.virtual-link-a' ? anchor : null,
+            },
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        } as unknown as MouseEvent;
+
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+
+        expect(highlightService.setPending).toHaveBeenCalledWith('Notes/Target.md', 'Target');
+        expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', false);
+        expect(event.preventDefault).toHaveBeenCalled();
+        expect(event.stopPropagation).toHaveBeenCalled();
+    });
+
+    it('falls back to the primary anchor when clicking the decorated widget around it', async () => {
+        const app = {
+            workspace: {
+                getActiveFile: () => makeFile('Notes/Source.md'),
+                openLinkText: jest.fn(async () => undefined),
+            },
+        };
+        const highlightService = {
+            setPending: jest.fn(),
+        };
+
+        const anchor = {
+            getAttribute: (name: string) => {
+                if (name === 'href') return 'Notes/Target.md';
+                if (name === 'origin-text') return 'Target';
+                return null;
+            },
+        };
+        const widget = {
+            querySelector: (selector: string) => selector === '.virtual-link-a' ? anchor : null,
+        };
+
+        const event = {
+            button: 0,
+            target: {
+                closest: (selector: string) => {
+                    if (selector === '.virtual-link-a') return null;
+                    if (selector === '.virtual-link-span') return widget;
+                    return null;
+                },
+            },
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        } as unknown as MouseEvent;
+
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+
+        expect(highlightService.setPending).toHaveBeenCalledWith('Notes/Target.md', 'Target');
+        expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', false);
+    });
+
+    it('ignores non-left mouse buttons', async () => {
+        const app = {
+            workspace: {
+                getActiveFile: () => makeFile('Notes/Source.md'),
+                openLinkText: jest.fn(async () => undefined),
+            },
+        };
+        const highlightService = {
+            setPending: jest.fn(),
+        };
+
+        const anchor = {
+            getAttribute: (name: string) => {
+                if (name === 'href') return 'Notes/Target.md';
+                if (name === 'origin-text') return 'Target';
+                return null;
+            },
+        };
+
+        const event = {
+            button: 2,
+            target: {
+                closest: (selector: string) => selector === '.virtual-link-a' ? anchor : null,
+            },
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        } as unknown as MouseEvent;
+
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+
+        expect(highlightService.setPending).not.toHaveBeenCalled();
+        expect(app.workspace.openLinkText).not.toHaveBeenCalled();
+        expect(event.preventDefault).not.toHaveBeenCalled();
     });
 });

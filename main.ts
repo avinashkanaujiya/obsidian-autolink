@@ -1,4 +1,4 @@
-import { App, EditorPosition, MarkdownView, Menu, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { App, EditorPosition, Keymap, MarkdownView, Menu, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 
 import { GlossaryLinker } from './linker/readModeLinker';
 import { liveLinkerPlugin } from './linker/liveLinker';
@@ -156,6 +156,74 @@ function isMarkdownFileOrFolder(file: TAbstractFile): boolean {
     return file instanceof TFolder || (file instanceof TFile && file.extension === 'md');
 }
 
+type VirtualLinkAnchor = {
+    getAttribute(name: string): string | null;
+};
+
+type ClosestCapableElement = {
+    closest(selector: string): unknown;
+    parentElement?: unknown;
+};
+
+function getClosestCapableElement(target: EventTarget | null): ClosestCapableElement | null {
+    const candidate = target as unknown as ClosestCapableElement | null;
+    if (candidate && typeof candidate.closest === 'function') {
+        return candidate;
+    }
+
+    const parentElement = candidate?.parentElement;
+    if (parentElement && typeof (parentElement as ClosestCapableElement).closest === 'function') {
+        return parentElement as ClosestCapableElement;
+    }
+
+    return null;
+}
+
+function resolveVirtualLinkAnchor(target: EventTarget | null): VirtualLinkAnchor | null {
+    const element = getClosestCapableElement(target);
+    if (!element) return null;
+
+    const directAnchor = element.closest('.virtual-link-a');
+    if (directAnchor && typeof (directAnchor as VirtualLinkAnchor).getAttribute === 'function') {
+        return directAnchor as VirtualLinkAnchor;
+    }
+
+    const widget = element.closest('.virtual-link-span') as { querySelector?(selector: string): unknown } | null;
+    if (!widget || typeof widget.querySelector !== 'function') {
+        return null;
+    }
+
+    const firstAnchor = widget.querySelector('.virtual-link-a');
+    return firstAnchor && typeof (firstAnchor as VirtualLinkAnchor).getAttribute === 'function'
+        ? firstAnchor as VirtualLinkAnchor
+        : null;
+}
+
+export async function handleVirtualLinkClickEvent(
+    app: App,
+    highlightService: HighlightService,
+    e: MouseEvent,
+): Promise<void> {
+    if (e.button !== 0) return;
+
+    const anchor = resolveVirtualLinkAnchor(e.target);
+    if (!anchor) return;
+
+    const href = anchor.getAttribute('href');
+    if (!href) return;
+
+    const searchText = anchor.getAttribute('origin-text');
+    if (searchText) {
+        highlightService.setPending(href, searchText);
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const sourcePath = app.workspace.getActiveFile()?.path ?? '';
+    await app.workspace.openLinkText(href, sourcePath, Keymap.isModEvent(e));
+}
+
 export default class LinkerPlugin extends Plugin {
     settings: LinkerPluginSettings;
     updateManager = new ExternalUpdateManager();
@@ -193,20 +261,15 @@ export default class LinkerPlugin extends Plugin {
         this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => this.addContextMenuItem(menu, file, source)));
 
         // ----------------------------------------------------------------
-        // Display-text highlight: intercept virtual-link clicks.
-        // We use the capture phase so this fires before Obsidian's own
-        // internal-link handler navigates away from the current note.
+        // Display-text highlight: intercept virtual-link activation.
+        // We use mousedown in the capture phase because CodeMirror can prevent
+        // the first click from firing when a pane is focused or rerendered,
+        // which manifests as “sometimes needs two clicks”. Handling the event
+        // earlier makes navigation deterministic for both read mode and live
+        // preview widgets.
         // ----------------------------------------------------------------
-        this.registerDomEvent(document, 'click', (e: MouseEvent) => {
-            const target = e.target as HTMLElement;
-            const anchor = target.closest('.virtual-link-a') as HTMLAnchorElement | null;
-            if (!anchor) return;
-
-            const searchText = anchor.getAttribute('origin-text');
-            const href = anchor.getAttribute('href');
-            if (searchText && href) {
-                this.highlightService.setPending(href, searchText);
-            }
+        this.registerDomEvent(document, 'mousedown', (e: MouseEvent) => {
+            void handleVirtualLinkClickEvent(this.app, this.highlightService, e);
         }, true /* capture */);
 
         // Promote pending highlight when the target file opens and apply it.
