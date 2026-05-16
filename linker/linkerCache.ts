@@ -4,15 +4,17 @@ import { LinkerPluginSettings } from 'main';
 import { LinkerMetaInfoFetcher } from './linkerInfo';
 
 export class ExternalUpdateManager {
-    registeredCallbacks: Set<Function> = new Set();
+    private registeredCallbacks: Set<() => void> = new Set();
 
-    constructor() {}
-
-    registerCallback(callback: Function) {
+    registerCallback(callback: () => void): void {
         this.registeredCallbacks.add(callback);
     }
 
-    update() {
+    deregisterCallback(callback: () => void): void {
+        this.registeredCallbacks.delete(callback);
+    }
+
+    update(): void {
         // Timeout to make sure the cache is updated
         setTimeout(() => {
             for (const callback of this.registeredCallbacks) {
@@ -156,7 +158,6 @@ export class PrefixTree {
         // Store the leaf node for the file to be able to remove it later
         const path = file.path;
         this.mapFilePathToLeaveNodes.set(path, [node, ...(this.mapFilePathToLeaveNodes.get(path) ?? [])]);
-        // console.log("Adding file", file, name);
     }
 
     private static isNoneEmptyString(value: string | null | undefined): value is string {
@@ -168,10 +169,10 @@ export class PrefixTree {
             return false;
         }
 
-        const length = value.length;
-        const upperCaseChars = value.split('').filter((char) => char === char.toUpperCase()).length;
-
-        return upperCaseChars / length >= upperCasePart;
+        const letters = value.split('').filter((char) => /\p{L}/u.test(char));
+        if (letters.length === 0) return false;
+        const upperCaseChars = letters.filter((char) => char === char.toUpperCase()).length;
+        return upperCaseChars / letters.length >= upperCasePart;
     }
 
     private addFileToTree(file: TFile) {
@@ -193,7 +194,8 @@ export class PrefixTree {
 
         // Get the tags of the file
         // and normalize them by removing the # in front of tags
-        const tags = (getAllTags(this.app.metadataCache.getFileCache(file)!!) ?? [])
+        const fileCache = this.app.metadataCache.getFileCache(file);
+        const tags = (fileCache ? getAllTags(fileCache) ?? [] : [])
             .filter(PrefixTree.isNoneEmptyString)
             .map((tag) => (tag.startsWith('#') ? tag.slice(1) : tag));
 
@@ -202,16 +204,6 @@ export class PrefixTree {
 
         const isInIncludedDir = metaInfo.isInIncludedDir;
         const isInExcludedDir = metaInfo.isInExcludedDir;
-
-        // console.log({
-        //     file: file.path,
-        //     tags: tags,
-        //     includeFile,
-        //     excludeFile,
-        //     isInIncludedDir,
-        //     isInExcludedDir,
-        //     includeAllFiles: metaInfo.includeAllFiles
-        // });
 
         if (excludeFile || (isInExcludedDir && !includeFile)) {
             return;
@@ -228,10 +220,6 @@ export class PrefixTree {
         let aliasesWithMatchCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToMatchCase] ?? []);
         let aliasesWithIgnoreCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToIgnoreCase] ?? []);
 
-        // if (aliasesWithMatchCase.size > 0 || aliasesWithIgnoreCase.size > 0) {
-        //     console.log("Aliases with match case", aliasesWithMatchCase, file.basename);
-        //     console.log("Aliases with ignore case", aliasesWithIgnoreCase, file.basename);
-        // }
 
         // If aliases is not an array, convert it to an array
         if (!Array.isArray(aliases)) {
@@ -257,14 +245,11 @@ export class PrefixTree {
 
         // Check if the file should match case sensitive
         if (this.settings.matchCaseSensitive) {
-            let lowerCaseNames = new Array<string>();
             if (tags.includes(this.settings.tagToIgnoreCase)) {
                 namesWithCaseIgnore = [...names];
             } else {
                 namesWithCaseMatch = [...names];
             }
-            lowerCaseNames = lowerCaseNames.map((name) => name.toLowerCase());
-            names.push(...lowerCaseNames);
         } else {
             let lowerCaseNames = new Array<string>();
             if (tags.includes(this.settings.tagToMatchCase)) {
@@ -363,7 +348,6 @@ export class PrefixTree {
             if (this.fileIsUpToDate(file)) {
                 continue;
             }
-            // console.log("Updating", file, file.stat.mtime, this.mapIndexedFilePathsToUpdateTime.get(file.path));
 
             // Otherwise, add the file to the tree
             try {
@@ -375,7 +359,6 @@ export class PrefixTree {
 
         // Remove files that are no longer in the vault
         const filesToRemove = [...this.setIndexedFilePaths].filter((f) => !currentVaultFiles.has(f));
-        // console.log("Removing", filesToRemove);
         filesToRemove.forEach((f) => this.removeFileFromTree(f));
     }
 
@@ -397,8 +380,7 @@ export class PrefixTree {
 
     pushChar(char: string) {
         const newNodes: VisitedPrefixNode[] = [];
-        const chars = [char];
-        chars.push(char.toLowerCase());
+        const chars = [...new Set([char, char.toLowerCase()])];
 
         chars.forEach((c) => {
             // char = char.toLowerCase();
@@ -421,17 +403,6 @@ export class PrefixTree {
                 }
             }
 
-            // TODO: Ignore formatting (#59)
-            if (false) {
-                // Check if the current char is a formatting char, if so also add the current nodes
-                const isFormatting = PrefixTree.isFormattingChar(char);
-                if (isFormatting) {
-                    this._currentNodes.forEach((node) => {
-                        node.formattingDelta += 1;
-                    });
-                    newNodes.push(...this._currentNodes);
-                }
-            }
         });
         this._currentNodes = newNodes;
     }
@@ -472,7 +443,6 @@ export class PrefixTree {
         //     }
         //     pattern = new RegExp(parts[1], parts[2]);
         // }
-        // console.log('Checking word boundary', char, pattern);
         return pattern.test(char);
     }
 
@@ -498,7 +468,6 @@ export class LinkerCache {
     constructor(public app: App, public settings: LinkerPluginSettings) {
         const { vault } = app;
         this.vault = vault;
-        // console.log("Creating LinkerCache");
         this.cache = new PrefixTree(app, settings);
         this.updateCache(true);
     }
@@ -510,6 +479,10 @@ export class LinkerCache {
         return LinkerCache.instance;
     }
 
+    static resetInstance(): void {
+        LinkerCache.instance = undefined as unknown as LinkerCache;
+    }
+
     clearCache() {
         this.cache.clear();
     }
@@ -519,7 +492,6 @@ export class LinkerCache {
     }
 
     updateCache(force = false) {
-        // force = true;
         if (!this.app?.workspace?.getActiveFile()) {
             return;
         }
@@ -529,7 +501,6 @@ export class LinkerCache {
         if (activeFile === this.activeFilePath && !force) {
             return;
         }
-        // console.log("Updating cache", force);
         this.cache.updateTree(force ? undefined : [activeFile, this.activeFilePath]);
 
         this.activeFilePath = activeFile;

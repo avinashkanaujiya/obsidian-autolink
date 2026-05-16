@@ -15,11 +15,16 @@ export class LinkerFileMetaInfo {
 
     constructor(public fetcher: LinkerMetaInfoFetcher, file: TFile | TAbstractFile) {
         this.fetcher = fetcher;
-        this.file = file instanceof TFile ? file : this.fetcher.app.vault.getFileByPath(file.path) as TFile;
+        const resolvedFile = file instanceof TFile ? file : this.fetcher.app.vault.getFileByPath(file.path);
+        if (!resolvedFile) {
+            console.warn(`[Autolink] Could not resolve file at path: ${file.path}`);
+        }
+        this.file = resolvedFile as TFile;
 
         const settings = this.fetcher.settings;
 
-        this.tags = (getAllTags(this.fetcher.app.metadataCache.getFileCache(this.file)!!) ?? [])
+        const fileCache = this.fetcher.app.metadataCache.getFileCache(this.file);
+        this.tags = (fileCache ? getAllTags(fileCache) ?? [] : [])
             .filter(tag => tag.trim().length > 0)
             .map(tag => tag.startsWith("#") ? tag.slice(1) : tag);
 
@@ -44,8 +49,12 @@ export class LinkerMetaInfoFetcher {
     refreshSettings(settings?: LinkerPluginSettings) {
         this.settings = settings ?? this.settings;
         this.includeAllFiles = this.settings.includeAllFiles;
-        this.includeDirPattern = new RegExp(`(^|\/)(${this.settings.linkerDirectories.join("|")})\/`);
-        this.excludeDirPattern = new RegExp(`(^|\/)(${this.settings.excludedDirectories.join("|")})\/`);
+        this.includeDirPattern = this.settings.linkerDirectories.length > 0
+            ? new RegExp(`(^|\/)(${this.settings.linkerDirectories.join("|")})\/`)
+            : /(?!)/;
+        this.excludeDirPattern = this.settings.excludedDirectories.length > 0
+            ? new RegExp(`(^|\/)(${this.settings.excludedDirectories.join("|")})\/`)
+            : /(?!)/;
     }
 
     getMetaInfo(file: TFile | TAbstractFile) {

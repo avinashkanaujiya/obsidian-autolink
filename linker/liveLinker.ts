@@ -41,12 +41,15 @@ class AutoLinkerPlugin implements PluginValue {
     private lastCursorPos: number = 0;
     private lastActiveFile: string = '';
     private lastViewUpdate: ViewUpdate | null = null;
+    private updateManager: ExternalUpdateManager;
+    private updateCallback: () => void;
 
     viewUpdateDomToFileMap: Map<HTMLElement, TFile | undefined | null> = new Map();
 
     constructor(view: EditorView, app: App, settings: LinkerPluginSettings, updateManager: ExternalUpdateManager) {
         this.app = app;
         this.settings = settings;
+        this.updateManager = updateManager;
 
         const { vault } = this.app;
         this.vault = vault;
@@ -55,11 +58,12 @@ class AutoLinkerPlugin implements PluginValue {
 
         this.decorations = this.buildDecorations(view);
 
-        updateManager.registerCallback(() => {
+        this.updateCallback = () => {
             if (this.lastViewUpdate) {
                 this.update(this.lastViewUpdate, true);
             }
-        });
+        };
+        updateManager.registerCallback(this.updateCallback);
     }
 
     update(update: ViewUpdate, force: boolean = false) {
@@ -95,7 +99,9 @@ class AutoLinkerPlugin implements PluginValue {
         this.lastViewUpdate = update;
     }
 
-    destroy() {}
+    destroy() {
+        this.updateManager.deregisterCallback(this.updateCallback);
+    }
 
     buildDecorations(view: EditorView, viewIsActive: boolean = true): DecorationSet {
         const builder = new RangeSetBuilder<Decoration>();
@@ -143,7 +149,6 @@ class AutoLinkerPlugin implements PluginValue {
                     );
 
                     if (currentNodes.length > 0) {
-                        // console.log('NODES', currentNodes);
                         for (const node of currentNodes) {
                             // Check if we want to include this note based on the settings
                             if (!this.settings.matchAnyPartsOfWords) {
@@ -163,7 +168,6 @@ class AutoLinkerPlugin implements PluginValue {
                             const aFrom = from + nFrom;
                             const aTo = from + nTo;
 
-                            // console.log("MATCH", name, aFrom, aTo, node.caseIsMatched, node.requiresCaseMatch)
 
                             matches.push(
                                 new VirtualMatch(id++, name, aFrom, aTo, Array.from(node.files), isAlias, !isWordBoundary, this.settings)
@@ -199,7 +203,6 @@ class AutoLinkerPlugin implements PluginValue {
                     const type = node.type.name;
                     const types = type.split('_');
                     // const text = view.state.doc.sliceString(node.from, node.to);
-                    // console.log(text, node.type.name, types, node.from, node.to)
 
                     for (const excludedType of excludedTypes) {
                         if (type.contains(excludedType)) {

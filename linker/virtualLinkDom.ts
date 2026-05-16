@@ -58,15 +58,13 @@ export class VirtualMatch {
         return span;
     }
 
-    getMultipleReferencesSpan(files?: TFile[]) {
+    getMultipleReferencesSpan() {
         const spanReferences = document.createElement('span');
         if (!this.settings.alwaysShowMultipleReferences) {
             spanReferences.classList.add('multiple-files-references');
         }
 
-        files = files ?? this.files;
-
-
+        const files = this.files;
 
         files.forEach((file, index) => {
             if (index === 0) {
@@ -76,7 +74,7 @@ export class VirtualMatch {
             }
 
             let linkText = ` ${index + 1} `;
-            if (index < files!.length - 1) {
+            if (index < files.length - 1) {
                 linkText += '|';
             }
 
@@ -84,7 +82,7 @@ export class VirtualMatch {
             const link = this.getLinkAnchorElement(linkText, linkHref);
             spanReferences.appendChild(link);
 
-            if (index == files!.length - 1) {
+            if (index == files.length - 1) {
                 const bracket = document.createElement('span');
                 bracket.textContent = ']';
                 spanReferences.appendChild(bracket);
@@ -177,7 +175,7 @@ export class VirtualMatch {
                         continue;
                     }
 
-                    if (otherAddition.files.every((f) => addition.files.contains(f))) {
+                    if (otherAddition.files.every((f) => addition.files.includes(f))) {
                         matchesToDelete.set(otherAddition.id, true);
                     }
                 }

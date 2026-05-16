@@ -159,7 +159,7 @@ export default class LinkerPlugin extends Plugin {
 
                 // Get the DOM element containing the selection
                 const cmEditor = (editor as any).cm;
-                if (!cmEditor) return false;
+                if (!cmEditor) return;
 
                 const selectionRange = cmEditor.dom.querySelector('.cm-content');
                 if (!selectionRange) return false;
@@ -191,52 +191,12 @@ export default class LinkerPlugin extends Plugin {
                     if (!(targetFile instanceof TFile)) continue;
 
                     const activeFile = this.app.workspace.getActiveFile();
-                    const activeFilePath = activeFile?.path ?? '';
-
-                    let absolutePath = targetFile.path;
-                    let relativePath = path.relative(
-                        path.dirname(activeFilePath),
-                        path.dirname(absolutePath)
-                    ) + '/' + path.basename(absolutePath);
-                    relativePath = relativePath.replace(/\\/g, '/');
-
-                    const replacementPath = this.app.metadataCache.fileToLinktext(targetFile, activeFilePath);
-                    const lastPart = replacementPath.split('/').pop()!;
-                    const shortestFile = this.app.metadataCache.getFirstLinkpathDest(lastPart!, '');
-                    let shortestPath = shortestFile?.path === targetFile.path ? lastPart : absolutePath;
-
-                    // Remove .md extension if needed
-                    if (!replacementPath.endsWith('.md')) {
-                        if (absolutePath.endsWith('.md')) absolutePath = absolutePath.slice(0, -3);
-                        if (shortestPath.endsWith('.md')) shortestPath = shortestPath.slice(0, -3);
-                        if (relativePath.endsWith('.md')) relativePath = relativePath.slice(0, -3);
-                    }
-
-                    const useMarkdownLinks = this.settings.useDefaultLinkStyleForConversion
-                        ? this.settings.defaultUseMarkdownLinks
-                        : this.settings.useMarkdownLinks;
-
-                    const linkFormat = this.settings.useDefaultLinkStyleForConversion
-                        ? this.settings.defaultLinkFormat
-                        : this.settings.linkFormat;
-
-                    let replacement = '';
-                    if (replacementPath === link.text && linkFormat === 'shortest') {
-                        replacement = `[[${replacementPath}]]`;
-                    } else {
-                        const path = linkFormat === 'shortest' ? shortestPath :
-                                   linkFormat === 'relative' ? relativePath :
-                                   absolutePath;
-
-                        replacement = useMarkdownLinks ?
-                            `[${link.text}](${path})` :
-                            `[[${path}|${link.text}]]`;
-                    }
+                    if (!activeFile) continue;
 
                     replacements.push({
                         from: link.from,
                         to: link.to,
-                        text: replacement
+                        text: this.buildRealLink(targetFile, activeFile.path, link.text)
                     });
                 }
 
@@ -265,15 +225,52 @@ export default class LinkerPlugin extends Plugin {
         );
     }
 
-    addContextMenuItem(menu: Menu, file: TAbstractFile, source: string) {
-        // addContextMenuItem(a: any, b: any, c: any) {
-        // Capture the MouseEvent when the context menu is triggered   // Define a named function to capture the MouseEvent
+    private buildRealLink(targetFile: TFile, sourceFilePath: string, displayText: string): string {
+        let absolutePath = targetFile.path;
+        let relativePath =
+            path.relative(path.dirname(sourceFilePath), path.dirname(absolutePath)) +
+            '/' +
+            path.basename(absolutePath);
+        relativePath = relativePath.replace(/\\/g, '/');
 
+        // fileToLinktext depends on the app's link format setting; we compute all variants ourselves
+        const replacementPath = this.app.metadataCache.fileToLinktext(targetFile, sourceFilePath);
+        const lastPart = replacementPath.split('/').pop()!;
+        const shortestFile = this.app.metadataCache.getFirstLinkpathDest(lastPart, '');
+        let shortestPath = shortestFile?.path === targetFile.path ? lastPart : absolutePath;
+
+        if (!replacementPath.endsWith('.md')) {
+            if (absolutePath.endsWith('.md')) absolutePath = absolutePath.slice(0, -3);
+            if (shortestPath.endsWith('.md')) shortestPath = shortestPath.slice(0, -3);
+            if (relativePath.endsWith('.md')) relativePath = relativePath.slice(0, -3);
+        }
+
+        const useMarkdownLinks = this.settings.useDefaultLinkStyleForConversion
+            ? this.settings.defaultUseMarkdownLinks
+            : this.settings.useMarkdownLinks;
+
+        const linkFormat = this.settings.useDefaultLinkStyleForConversion
+            ? this.settings.defaultLinkFormat
+            : this.settings.linkFormat;
+
+        if (replacementPath === displayText && linkFormat === 'shortest') {
+            return `[[${replacementPath}]]`;
+        }
+
+        const resolvedPath = linkFormat === 'shortest' ? shortestPath
+            : linkFormat === 'relative' ? relativePath
+            : absolutePath;
+
+        return useMarkdownLinks
+            ? `[${displayText}](${resolvedPath})`
+            : `[[${resolvedPath}|${displayText}]]`;
+    }
+
+    addContextMenuItem(menu: Menu, file: TAbstractFile, source: string) {
         if (!file) {
             return;
         }
 
-        // console.log('Context menu', menu, file, source);
 
         const that = this;
         const app: App = this.app;
@@ -318,97 +315,29 @@ export default class LinkerPlugin extends Plugin {
                         item.setTitle('[Virtual Linker] Convert to real link')
                             .setIcon('link')
                             .onClick(() => {
-                                // Get from and to position from the element
-                                const from = parseInt(targetElement.getAttribute('from') || '-1');
+                                                                const from = parseInt(targetElement.getAttribute('from') || '-1');
                                 const to = parseInt(targetElement.getAttribute('to') || '-1');
 
                                 if (from === -1 || to === -1) {
-                                    console.error('No from or to position');
+                                    console.error('[Autolink] No from or to position');
                                     return;
                                 }
 
-                                // Get the shown text
                                 const text = targetElement.getAttribute('origin-text') || '';
-                                const target = file;
                                 const activeFile = app.workspace.getActiveFile();
-                                const activeFilePath = activeFile?.path ?? '';
-
                                 if (!activeFile) {
-                                    console.error('No active file');
+                                    console.error('[Autolink] No active file');
                                     return;
                                 }
 
-                                let absolutePath = target.path;
-                                let relativePath =
-                                    path.relative(path.dirname(activeFile.path), path.dirname(absolutePath)) +
-                                    '/' +
-                                    path.basename(absolutePath);
-                                relativePath = relativePath.replace(/\\/g, '/'); // Replace backslashes with forward slashes
+                                const replacement = that.buildRealLink(file as TFile, activeFile.path, text);
 
-                                // Problem: we cannot just take the fileToLinktext result, as it depends on the app settings
-                                const replacementPath = app.metadataCache.fileToLinktext(target as TFile, activeFilePath);
-
-                                // The last part of the replacement path is the real shortest file name
-                                // We have to check, if it leads to the correct file
-                                const lastPart = replacementPath.split('/').pop()!;
-                                const shortestFile = app.metadataCache.getFirstLinkpathDest(lastPart!, '');
-                                // let shortestPath = shortestFile?.path == target.path ? lastPart : replacementPath;
-                                let shortestPath = shortestFile?.path == target.path ? lastPart : absolutePath;
-
-                                // Remove superfluous .md extension
-                                if (!replacementPath.endsWith('.md')) {
-                                    if (absolutePath.endsWith('.md')) {
-                                        absolutePath = absolutePath.slice(0, -3);
-                                    }
-                                    if (shortestPath.endsWith('.md')) {
-                                        shortestPath = shortestPath.slice(0, -3);
-                                    }
-                                    if (relativePath.endsWith('.md')) {
-                                        relativePath = relativePath.slice(0, -3);
-                                    }
-                                }
-
-                                const useMarkdownLinks = settings.useDefaultLinkStyleForConversion
-                                    ? settings.defaultUseMarkdownLinks
-                                    : settings.useMarkdownLinks;
-
-                                const linkFormat = settings.useDefaultLinkStyleForConversion
-                                    ? settings.defaultLinkFormat
-                                    : settings.linkFormat;
-
-                                const createLink = (replacementPath: string, text: string, markdownStyle: boolean) => {
-                                    if (markdownStyle) {
-                                        return `[${text}](${replacementPath})`;
-                                    } else {
-                                        return `[[${replacementPath}|${text}]]`;
-                                    }
-                                };
-
-                                // Create the replacement
-                                let replacement = '';
-
-                                // If the file is the same as the shown text, and we can use short links, we use them
-                                if (replacementPath === text && linkFormat === 'shortest') {
-                                    replacement = `[[${replacementPath}]]`;
-                                }
-                                // Otherwise create a specific link, using the shown text
-                                else {
-                                    if (linkFormat === 'shortest') {
-                                        replacement = createLink(shortestPath, text, useMarkdownLinks);
-                                    } else if (linkFormat === 'relative') {
-                                        replacement = createLink(relativePath, text, useMarkdownLinks);
-                                    } else if (linkFormat === 'absolute') {
-                                        replacement = createLink(absolutePath, text, useMarkdownLinks);
-                                    }
-                                }
-
-                                // Replace the text
                                 const editor = app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                                 const fromEditorPos = editor?.offsetToPos(from);
                                 const toEditorPos = editor?.offsetToPos(to);
 
                                 if (!fromEditorPos || !toEditorPos) {
-                                    console.warn('No editor positions');
+                                    console.warn('[Autolink] No editor positions');
                                     return;
                                 }
 
@@ -533,9 +462,9 @@ export default class LinkerPlugin extends Plugin {
             document.addEventListener('contextmenu', contextMenuHandler, { once: true });
         } else {
             // Check if the directory is in the linker directories
-            const path = file.path + '/';
-            const isInIncludedDir = fetcher.includeDirPattern.test(path);
-            const isInExcludedDir = fetcher.excludeDirPattern.test(path);
+            const dirPath = file.path + '/';
+            const isInIncludedDir = fetcher.includeDirPattern.test(dirPath);
+            const isInExcludedDir = fetcher.excludeDirPattern.test(dirPath);
 
             // If the directory is in the linker directories, add the option to exclude it
             if ((fetcher.includeAllFiles && !isInExcludedDir) || isInIncludedDir) {
@@ -589,19 +518,22 @@ export default class LinkerPlugin extends Plugin {
         }
     }
 
-    onunload() {}
+    onunload() {
+        LinkerCache.resetInstance();
+    }
 
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
-        // Load markdown links from obsidian settings
-        // At the moment obsidian does not provide a clean way to get the settings through an API
-        // So we read the app.json settings file directly
-        // We also Cannot use the vault API because it only reads the vault files not the .obsidian folder
-        const fileContent = await this.app.vault.adapter.read(this.app.vault.configDir + '/app.json');
-        const appSettings = JSON.parse(fileContent);
-        this.settings.defaultUseMarkdownLinks = appSettings.useMarkdownLinks;
-        this.settings.defaultLinkFormat = appSettings.newLinkFormat ?? 'shortest';
+        // Obsidian does not expose link-format settings via a public API, so we read app.json directly.
+        try {
+            const fileContent = await this.app.vault.adapter.read(this.app.vault.configDir + '/app.json');
+            const appSettings = JSON.parse(fileContent);
+            this.settings.defaultUseMarkdownLinks = appSettings.useMarkdownLinks ?? false;
+            this.settings.defaultLinkFormat = appSettings.newLinkFormat ?? 'shortest';
+        } catch (e) {
+            console.warn('[Autolink] Could not read Obsidian app.json settings, using defaults.', e);
+        }
     }
 
     /** Update plugin settings. */
@@ -625,7 +557,6 @@ class LinkerSettingTab extends PluginSettingTab {
         // Toggle to activate or deactivate the linker
         new Setting(containerEl).setName('Activate Virtual Linker').addToggle((toggle) =>
             toggle.setValue(this.plugin.settings.linkerActivated).onChange(async (value) => {
-                // console.log("Linker activated: " + value);
                 await this.plugin.updateSettings({ linkerActivated: value });
             })
         );
@@ -633,7 +564,6 @@ class LinkerSettingTab extends PluginSettingTab {
         // Toggle to show advanced settings
         new Setting(containerEl).setName('Show advanced settings').addToggle((toggle) =>
             toggle.setValue(this.plugin.settings.advancedSettings).onChange(async (value) => {
-                // console.log("Advanced settings: " + value);
                 await this.plugin.updateSettings({ advancedSettings: value });
                 this.display();
             })
@@ -647,7 +577,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('If activated, the virtual linker will also include aliases for the files.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.includeAliases).onChange(async (value) => {
-                    // console.log("Include aliases: " + value);
                     await this.plugin.updateSettings({ includeAliases: value });
                 })
             );
@@ -659,7 +588,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If activated, there will not be several identical virtual links in the same note (Wikipedia style).')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.onlyLinkOnce).onChange(async (value) => {
-                        // console.log("Only link once: " + value);
                         await this.plugin.updateSettings({ onlyLinkOnce: value });
                     })
                 );
@@ -670,7 +598,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If activated, there will be no links to files that are already linked in the note by real links.')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.excludeLinksToRealLinkedFiles).onChange(async (value) => {
-                        // console.log("Exclude links to real linked files: " + value);
                         await this.plugin.updateSettings({ excludeLinksToRealLinkedFiles: value });
                     })
                 );
@@ -682,7 +609,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('If activated, headers (so your lines beginning with at least one `#`) are included for virtual links.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.includeHeaders).onChange(async (value) => {
-                    // console.log("Include headers: " + value);
                     await this.plugin.updateSettings({ includeHeaders: value });
                 })
             );
@@ -693,7 +619,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('If deactivated, only whole words are matched. Otherwise, every part of a word is found.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.matchAnyPartsOfWords).onChange(async (value) => {
-                    // console.log("Match only whole words: " + value);
                     await this.plugin.updateSettings({ matchAnyPartsOfWords: value });
                     this.display();
                 })
@@ -706,7 +631,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If activated, the beginnings of words are also linked, even if it is not a whole match.')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.matchBeginningOfWords).onChange(async (value) => {
-                        // console.log("Match only beginning of words: " + value);
                         await this.plugin.updateSettings({ matchBeginningOfWords: value });
                         this.display();
                     })
@@ -718,7 +642,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If activated, the ends of words are also linked, even if it is not a whole match.')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.matchEndOfWords).onChange(async (value) => {
-                        // console.log("Match only end of words: " + value);
                         await this.plugin.updateSettings({ matchEndOfWords: value });
                         this.display();
                     })
@@ -732,7 +655,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If activated, the suffix is not added to links for subwords, but only for complete matches.')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.suppressSuffixForSubWords).onChange(async (value) => {
-                        // console.log("Suppress suffix for sub words: " + value);
                         await this.plugin.updateSettings({ suppressSuffixForSubWords: value });
                     })
                 );
@@ -747,7 +669,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 )
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.fixIMEProblem).onChange(async (value) => {
-                        // console.log("Exclude links in current line: " + value);
                         await this.plugin.updateSettings({ fixIMEProblem: value });
                     })
                 );
@@ -760,7 +681,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If activated, there will be no links in the current line.')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.excludeLinksInCurrentLine).onChange(async (value) => {
-                        // console.log("Exclude links in current line: " + value);
                         await this.plugin.updateSettings({ excludeLinksInCurrentLine: value });
                     })
                 );
@@ -790,7 +710,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('If activated, the matching is case sensitive.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.matchCaseSensitive).onChange(async (value) => {
-                    // console.log("Case sensitive: " + value);
                     await this.plugin.updateSettings({ matchCaseSensitive: value });
                     this.display();
                 })
@@ -817,7 +736,6 @@ class LinkerSettingTab extends PluginSettingTab {
                             }
                             newValue /= 100;
 
-                            // console.log("New capital letter proportion for automatic match case: " + newValue);
                             await this.plugin.updateSettings({ capitalLetterProportionForAutomaticMatchCase: newValue });
                         })
                 );
@@ -829,7 +747,6 @@ class LinkerSettingTab extends PluginSettingTab {
                     .setDesc('By adding this tag to a file, the linker will ignore the case for the file.')
                     .addText((text) =>
                         text.setValue(this.plugin.settings.tagToIgnoreCase).onChange(async (value) => {
-                            // console.log("New tag to ignore case: " + value);
                             await this.plugin.updateSettings({ tagToIgnoreCase: value });
                         })
                     );
@@ -840,7 +757,6 @@ class LinkerSettingTab extends PluginSettingTab {
                     .setDesc('By adding this tag to a file, the linker will match the case for the file.')
                     .addText((text) =>
                         text.setValue(this.plugin.settings.tagToMatchCase).onChange(async (value) => {
-                            // console.log("New tag to match case: " + value);
                             await this.plugin.updateSettings({ tagToMatchCase: value });
                         })
                     );
@@ -854,7 +770,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 )
                 .addText((text) =>
                     text.setValue(this.plugin.settings.propertyNameToIgnoreCase).onChange(async (value) => {
-                        // console.log("New property name to ignore case: " + value);
                         await this.plugin.updateSettings({ propertyNameToIgnoreCase: value });
                     })
                 );
@@ -867,7 +782,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 )
                 .addText((text) =>
                     text.setValue(this.plugin.settings.propertyNameToMatchCase).onChange(async (value) => {
-                        // console.log("New property name to match case: " + value);
                         await this.plugin.updateSettings({ propertyNameToMatchCase: value });
                     })
                 );
@@ -883,7 +797,6 @@ class LinkerSettingTab extends PluginSettingTab {
                     // .setValue(true)
                     .setValue(this.plugin.settings.includeAllFiles)
                     .onChange(async (value) => {
-                        // console.log("Include all files: " + value);
                         await this.plugin.updateSettings({ includeAllFiles: value });
                         this.display();
                     })
@@ -908,7 +821,6 @@ class LinkerSettingTab extends PluginSettingTab {
                                 .split('\n')
                                 .map((x) => x.trim())
                                 .filter((x) => x.length > 0);
-                            // console.log("New folder name: " + value, this.plugin.settings.linkerDirectories);
                             await this.plugin.updateSettings();
                         });
 
@@ -937,7 +849,6 @@ class LinkerSettingTab extends PluginSettingTab {
                                     .split('\n')
                                     .map((x) => x.trim())
                                     .filter((x) => x.length > 0);
-                                // console.log("New folder name: " + value, this.plugin.settings.excludedDirectories);
                                 await this.plugin.updateSettings();
                             });
 
@@ -954,7 +865,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('Tag to explicitly include the file for the linker.')
                 .addText((text) =>
                     text.setValue(this.plugin.settings.tagToIncludeFile).onChange(async (value) => {
-                        // console.log("New tag to include file: " + value);
                         await this.plugin.updateSettings({ tagToIncludeFile: value });
                     })
                 );
@@ -965,7 +875,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('Tag to ignore the file for the linker.')
                 .addText((text) =>
                     text.setValue(this.plugin.settings.tagToExcludeFile).onChange(async (value) => {
-                        // console.log("New tag to ignore file: " + value);
                         await this.plugin.updateSettings({ tagToExcludeFile: value });
                     })
                 );
@@ -976,7 +885,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If toggled, links to the note itself are excluded from the linker. (This might not work in preview windows.)')
                 .addToggle((toggle) =>
                     toggle.setValue(this.plugin.settings.excludeLinksToOwnNote).onChange(async (value) => {
-                        // console.log("Exclude links to active file: " + value);
                         await this.plugin.updateSettings({ excludeLinksToOwnNote: value });
                     })
                 );
@@ -1000,7 +908,6 @@ class LinkerSettingTab extends PluginSettingTab {
                                 .split('\n')
                                 .map((x) => x.trim())
                                 .filter((x) => x.length > 0);
-                            // console.log("New folder name: " + value, this.plugin.settings.excludedDirectoriesForLinking);
                             await this.plugin.updateSettings();
                         });
 
@@ -1016,7 +923,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('If toggled, if there are multiple matching notes, all references are shown behind the match. If not toggled, the references are only shown if hovering over the match.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.alwaysShowMultipleReferences).onChange(async (value) => {
-                    // console.log("Always show multiple references: " + value);
                     await this.plugin.updateSettings({ alwaysShowMultipleReferences: value });
                 })
             );
@@ -1026,7 +932,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('The suffix to add to auto generated virtual links.')
             .addText((text) =>
                 text.setValue(this.plugin.settings.virtualLinkSuffix).onChange(async (value) => {
-                    // console.log("New glossary suffix: " + value);
                     await this.plugin.updateSettings({ virtualLinkSuffix: value });
                 })
             );
@@ -1035,7 +940,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('The suffix to add to auto generated virtual links for aliases.')
             .addText((text) =>
                 text.setValue(this.plugin.settings.virtualLinkAliasSuffix).onChange(async (value) => {
-                    // console.log("New glossary suffix: " + value);
                     await this.plugin.updateSettings({ virtualLinkAliasSuffix: value });
                 })
             );
@@ -1048,7 +952,6 @@ class LinkerSettingTab extends PluginSettingTab {
             )
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.applyDefaultLinkStyling).onChange(async (value) => {
-                    // console.log("Apply default link styling: " + value);
                     await this.plugin.updateSettings({ applyDefaultLinkStyling: value });
                 })
             );
@@ -1059,7 +962,6 @@ class LinkerSettingTab extends PluginSettingTab {
             .setDesc('If toggled, the default link style will be used for the conversion of virtual links to real links.')
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.useDefaultLinkStyleForConversion).onChange(async (value) => {
-                    // console.log("Use default link style for conversion: " + value);
                     await this.plugin.updateSettings({ useDefaultLinkStyleForConversion: value });
                     this.display();
                 })
@@ -1072,7 +974,6 @@ class LinkerSettingTab extends PluginSettingTab {
                 .setDesc('If toggled, the virtual links will be created as wiki-links instead of markdown links.')
                 .addToggle((toggle) =>
                     toggle.setValue(!this.plugin.settings.useMarkdownLinks).onChange(async (value) => {
-                        // console.log("Use markdown links: " + value);
                         await this.plugin.updateSettings({ useMarkdownLinks: !value });
                     })
                 );
@@ -1088,7 +989,6 @@ class LinkerSettingTab extends PluginSettingTab {
                         .addOption('absolute', 'Absolute')
                         .setValue(this.plugin.settings.linkFormat)
                         .onChange(async (value) => {
-                            // console.log("New link format: " + value);
                             await this.plugin.updateSettings({ linkFormat: value as 'shortest' | 'relative' | 'absolute' });
                         })
                 );

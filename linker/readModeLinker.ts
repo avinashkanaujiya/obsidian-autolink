@@ -1,4 +1,4 @@
-import { App, getLinkpath, MarkdownPostProcessorContext, MarkdownRenderChild, TFile } from 'obsidian';
+import { App, MarkdownPostProcessorContext, MarkdownRenderChild, TFile } from 'obsidian';
 
 import { LinkerPluginSettings } from '../main';
 import { LinkerCache, PrefixTree } from './linkerCache';
@@ -25,35 +25,12 @@ export class GlossaryLinker extends MarkdownRenderChild {
         this.load();
     }
 
-    getClosestLinkPath(glossaryName: string): TFile | null {
-        const destName = this.ctx.sourcePath.replace(/(.*).md/, '$1');
-        let currentDestName = destName;
-
-        let currentPath = this.app.metadataCache.getFirstLinkpathDest(getLinkpath(glossaryName), currentDestName);
-
-        if (currentPath == null) return null;
-
-        while (currentDestName.includes('/')) {
-            currentDestName = currentDestName.replace(/\/[^\/]*?$/, '');
-
-            const newPath = this.app.metadataCache.getFirstLinkpathDest(getLinkpath(glossaryName), currentDestName);
-
-            if ((newPath?.path?.length || 0) > currentPath?.path?.length) {
-                currentPath = newPath;
-                // console.log("Break at New path: ", currentPath);
-                break;
-            }
-        }
-
-        return currentPath;
-    }
 
     onload() {
         if (!this.settings.linkerActivated) {
             return;
         }
 
-        // return;
         const tags = ['p', 'li', 'td', 'th', 'span', 'em', 'strong']; //"div"
         if (this.settings.includeHeaders) {
             tags.push('h1', 'h2', 'h3', 'h4', 'h5', 'h6');
@@ -66,11 +43,7 @@ export class GlossaryLinker extends MarkdownRenderChild {
         const explicitlyLinkedFiles = new Set<TFile>();
 
         for (const tag of tags) {
-            // console.log("Tag: ", tag);
             const nodeList = this.containerEl.getElementsByTagName(tag);
-            const children = this.containerEl.children;
-            // if (nodeList.length === 0) continue;
-            // if (nodeList.length != 0) console.log(tag, nodeList.length);
             for (let index = 0; index <= nodeList.length; index++) {
                 const item = index == nodeList.length ? this.containerEl : nodeList.item(index)!;
 
@@ -114,9 +87,6 @@ export class GlossaryLinker extends MarkdownRenderChild {
                                         const nTo = node.end;
                                         const name = text.slice(nFrom, nTo);
 
-                                        // TODO: Handle multiple files
-                                        // const file = node.files.values().next().value;
-
                                         matches.push(
                                             new VirtualMatch(
                                                 id++,
@@ -156,7 +126,6 @@ export class GlossaryLinker extends MarkdownRenderChild {
 
                         const parent = childNode.parentElement;
                         let lastTo = 0;
-                        // console.log("Parent: ", parent);
 
                         matches.forEach((match) => {
                             match.files.forEach((f) => linkedFiles.add(f));

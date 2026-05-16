@@ -143,8 +143,8 @@ To apply custom styling to the links, you can add a CSS-snippet at `VaultFolder/
 The plugin provides the following commands that you can use:
 
 - **Convert All Virtual Links in Selection to Real Links**: Converts all virtual links within the selected text to real links.
-- **Activate Autolink**: Activates autolink if it is currently deactivated.
-- **Deactivate Autolink**: Deactivates autolink if it is currently activated.
+- **Activate Virtual Linker**: Activates autolink if it is currently deactivated.
+- **Deactivate Virtual Linker**: Deactivates autolink if it is currently activated.
 
 You can access these commands from the command palette or assign custom hotkeys to them in the settings.
 
