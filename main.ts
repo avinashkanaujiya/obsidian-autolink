@@ -599,62 +599,83 @@ export default class LinkerPlugin extends Plugin {
     }
 
     /**
-     * Poll every 200 ms until either:
-     *   - Reading mode: a <mark class="autolink-highlight"> is in the DOM →
-     *     scroll to it via DOM scrollIntoView.
-     *   - Live preview / source: editor model is populated → scroll via the
-     *     Obsidian Editor API (editor.scrollIntoView), which works for CM6
-     *     regardless of whether decorations have rendered yet.
+     * Two-phase, mode-agnostic scroll toward the first highlighted occurrence.
      *
-     * We separate the two paths because editor.scrollIntoView() targets the
-     * hidden CM6 editor in reading mode and has no visible effect there;
-     * likewise, <mark> elements don't exist in live-preview mode.
+     * Phase A – DOM search (both modes)
+     *   Reading mode  : <mark class="autolink-highlight"> injected by
+     *                   applyHighlightToDOM().  Scroll via DOM scrollIntoView.
+     *   Live preview  : <span class="autolink-highlight"> rendered by CM6.
+     *                   Scroll via DOM scrollIntoView.
      *
-     * Retries up to MAX_ATTEMPTS × INTERVAL_MS ≈ 2 s, then gives up.
+     * Phase B – editor kick (live preview only, runs once when Phase A fails)
+     *   The first match may be below the initial CM6 viewport, so the span
+     *   doesn’t exist in the DOM yet.  We call editor.scrollIntoView() to
+     *   move the editor to that position, which causes CM6 to render it.
+     *   The very next poll attempt (Phase A) then finds the span.
+     *
+     * We use iterateAllLeaves instead of getActiveViewOfType so we find the
+     * right view even when Obsidian has briefly shifted focus to a toolbar or
+     * a different pane during the opening animation.
      */
-    private attemptScroll(filePath: string, searchText: string, attempt: number): void {
-        const INTERVAL_MS = 200;
-        const MAX_ATTEMPTS = 10;
+    private attemptScroll(
+        filePath: string,
+        searchText: string,
+        attempt: number,
+        editorKickDone = false
+    ): void {
+        const INTERVAL_MS  = 150;
+        const MAX_ATTEMPTS = 14; // ~2 s total
 
         if (attempt >= MAX_ATTEMPTS) return;
 
         setTimeout(() => {
-            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-            if (!view || view.file?.path !== filePath) return; // user navigated away
-
-            // Detect the current view mode using the internal getMode() API
-            // (returns 'preview' | 'source' | 'live').  Not in public types but
-            // stable and widely used by the plugin community.
-            const mode: string = (view as any).getMode?.() ?? 'live';
-
-            if (mode === 'preview') {
-                // ── Reading mode ─────────────────────────────────────────────
-                // Marks are injected by the post-processor (fresh note) or by
-                // applyHighlightToDOM inside requestAnimationFrame (already-open
-                // note).  Keep retrying until they appear.
-                const firstMark = view.contentEl.querySelector('mark.autolink-highlight');
-                if (firstMark instanceof HTMLElement) {
-                    firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    return; // done
+            // Find the view that holds this file regardless of focus state.
+            let view: MarkdownView | null = null;
+            this.app.workspace.iterateAllLeaves(leaf => {
+                if (!view &&
+                    leaf.view instanceof MarkdownView &&
+                    leaf.view.file?.path === filePath) {
+                    view = leaf.view;
                 }
-                // Marks not in DOM yet — retry
-                this.attemptScroll(filePath, searchText, attempt + 1);
-            } else {
-                // ── Live preview / source mode ────────────────────────────────
-                // The raw document text is always available immediately; no need
-                // to wait for CM6 decorations to render before scrolling.
-                const editor = view.editor;
-                if (!editor) return;
+            });
+            if (!view) return; // note was closed
 
-                const content = editor.getValue();
-                const idx = content.toLowerCase().indexOf(searchText.toLowerCase());
-                if (idx < 0) return;
-
-                const from = editor.offsetToPos(idx);
-                const to   = editor.offsetToPos(idx + searchText.length);
-                editor.scrollIntoView({ from, to }, true /* centre */);
+            // ── Phase A: DOM search ────────────────────────────────────────
+            // Reading mode injected <mark>
+            const domMark = (view as MarkdownView).contentEl
+                .querySelector('mark.autolink-highlight');
+            if (domMark instanceof HTMLElement) {
+                domMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
             }
-        }, attempt === 0 ? 300 : INTERVAL_MS);
+
+            // Live-preview CM6 rendered <span class="autolink-highlight">
+            const cmMark = (view as MarkdownView).contentEl
+                .querySelector('.cm-content .autolink-highlight');
+            if (cmMark instanceof HTMLElement) {
+                cmMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+
+            // ── Phase B: editor kick (live preview, first miss only) ────────
+            // Scroll the CM6 editor to the text position so it renders that
+            // part of the document.  The next poll will find the span in the DOM.
+            if (!editorKickDone) {
+                const editor = (view as MarkdownView).editor;
+                if (editor) {
+                    const raw = editor.getValue().toLowerCase();
+                    const idx = raw.indexOf(searchText.toLowerCase());
+                    if (idx >= 0) {
+                        const from = editor.offsetToPos(idx);
+                        const to   = editor.offsetToPos(idx + searchText.length);
+                        editor.scrollIntoView({ from, to }, true);
+                    }
+                }
+            }
+
+            // Content / decorations not ready yet — retry.
+            this.attemptScroll(filePath, searchText, attempt + 1, true);
+        }, attempt === 0 ? 200 : INTERVAL_MS);
     }
 
     onunload() {
