@@ -99,3 +99,107 @@ mark.autolink-highlight:first-of-type {
     border-radius: 2px;
     transition: background-color 0.2s ease;
 }
+
+/* ── Autolink Highlights sidebar panel ───────────────────────────────────── */
+
+.autolink-highlight-view {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 10px;
+    gap: 0;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* Header */
+.autolink-hl-header {
+    padding-bottom: 10px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.autolink-hl-term {
+    font-weight: 600;
+    font-size: 1.0em;
+    color: var(--text-accent);
+    word-break: break-word;
+}
+
+.autolink-hl-subtitle {
+    font-size: 0.78em;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Count badge */
+.autolink-hl-count {
+    font-size: 0.75em;
+    color: var(--text-faint);
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+}
+
+/* Occurrence list */
+.autolink-hl-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.autolink-hl-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 5px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.autolink-hl-item:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border);
+}
+
+.autolink-hl-item:active {
+    background: var(--background-modifier-active-hover);
+}
+
+/* Line-number chip */
+.autolink-hl-lineno {
+    flex-shrink: 0;
+    font-family: var(--font-monospace);
+    font-size: 0.68em;
+    color: var(--text-faint);
+    background: var(--background-modifier-border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    min-width: 34px;
+    text-align: center;
+    user-select: none;
+}
+
+/* Context text */
+.autolink-hl-ctx {
+    font-size: 0.82em;
+    color: var(--text-normal);
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+/* The <mark> inside each context snippet reuses the same green style */
+
+/* Empty / placeholder state */
+.autolink-hl-empty {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    text-align: center;
+    padding: 24px 12px;
+    line-height: 1.6;
+    white-space: pre-line;   /* honour \n in the message strings */
+}

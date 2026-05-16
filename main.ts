@@ -5,6 +5,7 @@ import { liveLinkerPlugin } from './linker/liveLinker';
 import { ExternalUpdateManager, LinkerCache } from 'linker/linkerCache';
 import { LinkerMetaInfoFetcher } from 'linker/linkerInfo';
 import { HighlightService, applyHighlightToDOM } from 'linker/highlightService';
+import { HighlightView, HIGHLIGHT_VIEW_TYPE } from 'linker/highlightView';
 
 import * as path from 'path';
 
@@ -115,6 +116,12 @@ export default class LinkerPlugin extends Plugin {
         // Register the live linker for the live edit mode
         this.registerEditorExtension(liveLinkerPlugin(this.app, this.settings, this.updateManager, this.highlightService));
 
+        // Register the right-sidebar highlights panel
+        this.registerView(
+            HIGHLIGHT_VIEW_TYPE,
+            (leaf) => new HighlightView(leaf, this.highlightService)
+        );
+
         // This adds a settings tab so the user can configure various aspects of the plugin
         this.addSettingTab(new LinkerSettingTab(this.app, this));
 
@@ -148,6 +155,10 @@ export default class LinkerPlugin extends Plugin {
 
                 // Trigger a CM6 re-render so live-preview gets the decorations.
                 this.updateManager.update();
+
+                // Open / reveal the sidebar panel so the user can jump to any
+                // occurrence even when the automatic scroll misses on long notes.
+                this.revealHighlightSidebar();
 
                 // Apply marks to already-rendered reading-mode DOM (for notes
                 // that were already open in another leaf when the link was clicked).
@@ -595,6 +606,25 @@ export default class LinkerPlugin extends Plugin {
                         });
                 });
             }
+        }
+    }
+
+    /**
+     * Ensure the Autolink Highlights panel is open in the right sidebar and
+     * visible.  Creates a new leaf only when none exists yet.
+     */
+    private async revealHighlightSidebar(): Promise<void> {
+        const existing = this.app.workspace.getLeavesOfType(HIGHLIGHT_VIEW_TYPE);
+        if (existing.length > 0) {
+            this.app.workspace.revealLeaf(existing[0]);
+            return;
+        }
+        // getRightLeaf(false) reuses an existing right-sidebar leaf without
+        // splitting; it creates one if the sidebar is completely empty.
+        const leaf = this.app.workspace.getRightLeaf(false);
+        if (leaf) {
+            await leaf.setViewState({ type: HIGHLIGHT_VIEW_TYPE, active: true });
+            this.app.workspace.revealLeaf(leaf);
         }
     }
 
