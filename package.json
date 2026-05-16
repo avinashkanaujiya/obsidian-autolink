@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-autolink",
-	"version": "1.5.2",
+	"version": "2.0.0",
 	"description": "Automatically creates virtual links for text within your notes that match the titles or aliases of other notes in your vault.",
 	"main": "main.js",
 	"scripts": {
