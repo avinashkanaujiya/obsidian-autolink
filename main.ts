@@ -690,11 +690,18 @@ export default class LinkerPlugin extends Plugin {
             // ── Phase B: editor kick (live preview, first miss only) ────────
             // Scroll the CM6 editor to the text position so it renders that
             // part of the document.  The next poll will find the span in the DOM.
+            // We skip frontmatter so we don't kick to position 0 when the search
+            // text appears in aliases/tags but not yet in the visible body.
             if (!editorKickDone) {
                 const editor = (view as MarkdownView).editor;
                 if (editor) {
-                    const raw = editor.getValue().toLowerCase();
-                    const idx = raw.indexOf(searchText.toLowerCase());
+                    const raw  = editor.getValue();
+                    const file = (view as MarkdownView).file;
+                    const fmEnd = file
+                        ? (this.app.metadataCache.getFileCache(file)?.frontmatterPosition?.end.offset ?? 0)
+                        : 0;
+                    const searchFrom = fmEnd > 0 ? fmEnd : 0;
+                    const idx = raw.toLowerCase().indexOf(searchText.toLowerCase(), searchFrom);
                     if (idx >= 0) {
                         const from = editor.offsetToPos(idx);
                         const to   = editor.offsetToPos(idx + searchText.length);

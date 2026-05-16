@@ -105,12 +105,14 @@ export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string
 
     const regex = new RegExp(escapeRegex(searchText), 'gi');
 
-    // Walk only plain text nodes; skip code, pre, script, style.
+    // Walk only plain text nodes; skip code, pre, script, style, and the
+    // Obsidian Properties / frontmatter panel (.metadata-container).
     const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
             const parent = node.parentElement;
             if (!parent) return NodeFilter.FILTER_REJECT;
-            if (parent.closest('code, pre, script, style')) return NodeFilter.FILTER_REJECT;
+            if (parent.closest('code, pre, script, style, .metadata-container'))
+                return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
         },
     });

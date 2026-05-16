@@ -91,7 +91,13 @@ export class HighlightView extends ItemView {
             return;
         }
 
-        const occurrences = this.findOccurrences(content, searchText);
+        const fileCache   = this.app.metadataCache.getFileCache(file);
+        // Skip frontmatter lines: matches there (e.g. aliases: tiger reserve)
+        // are metadata, not body content, and the Properties widget hides them
+        // in rendered view so scrolling there is disorienting.
+        const fmEndLine  = fileCache?.frontmatterPosition?.end.line ?? -1;
+        const startLine  = fmEndLine >= 0 ? fmEndLine + 1 : 0;
+        const occurrences = this.findOccurrences(content, searchText, startLine);
 
         this.contentEl.empty();
         this.renderOccurrences(targetView, file.basename, searchText, occurrences);
@@ -100,12 +106,12 @@ export class HighlightView extends ItemView {
     // -------------------------------------------------------------------------
     // Finding occurrences
 
-    private findOccurrences(content: string, searchText: string): Occurrence[] {
+    private findOccurrences(content: string, searchText: string, startLine = 0): Occurrence[] {
         const lines  = content.split('\n');
         const regex  = new RegExp(escapeRegex(searchText), 'gi');
         const result: Occurrence[] = [];
 
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+        for (let lineNum = startLine; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
             let m: RegExpExecArray | null;
             while ((m = regex.exec(line)) !== null) {

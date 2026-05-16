@@ -348,12 +348,19 @@ class AutoLinkerPlugin implements PluginValue {
             });
 
             // Add mark decorations for plain-text occurrences of the highlight
-            // term that are NOT already covered by a virtual-link widget.
+            // term that are NOT already covered by a virtual-link widget and are
+            // NOT inside the frontmatter block (aliases/tags there are hidden by
+            // the Properties widget and would mislead the scroll-to-highlight).
             if (highlightRegex) {
+                const fmEndOffset = mappedFile
+                    ? (this.app.metadataCache.getFileCache(mappedFile)?.frontmatterPosition?.end.offset ?? -1)
+                    : -1;
                 let m: RegExpExecArray | null;
                 while ((m = highlightRegex.exec(text)) !== null) {
                     const mFrom = from + m.index;
                     const mTo = mFrom + m[0].length;
+                    // Skip positions that fall inside the frontmatter block.
+                    if (fmEndOffset >= 0 && mFrom <= fmEndOffset) continue;
                     if (!virtualLinkRangeKeys.has(`${mFrom}-${mTo}`)) {
                         decoSpecs.push({
                             from: mFrom,
