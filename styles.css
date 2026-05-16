@@ -1,25 +1,49 @@
 /*
-
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
-
-If your plugin does not need CSS, delete this file.
-
+  Autolink virtual-link styles.
+  These classes are applied by the plugin to auto-generated virtual links.
+  Users can override any of these in a custom CSS snippet.
 */
 
+/* ── Default virtual-link appearance ─────────────────────────────────────── */
+
+/* Keep the span wrapper neutral so only the inner anchor is styled. */
 .virtual-link-default {
-    filter: brightness(0.6);
+    /* no outer filter – styling is applied per-element below */
 }
 
-.linker-suffix-icon {
+/* The clickable anchor – subtle dashed underline, slightly muted colour. */
+.virtual-link-default .virtual-link-a {
+    text-decoration: underline;
+    text-decoration-style: dashed;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    opacity: 0.72;
+    transition: opacity 0.15s ease, text-decoration-style 0.15s ease;
+}
+
+.virtual-link-default .virtual-link-a:hover {
+    opacity: 1;
+    text-decoration-style: solid;
+}
+
+/* The suffix icon (🔗 by default) – smaller and unobtrusive. */
+.virtual-link-default .linker-suffix-icon {
+    font-size: 0.52em;
+    opacity: 0.45;
+    margin-left: 0.5px;
+    vertical-align: super;
+    line-height: 0;
     user-select: none;
 }
+
+/* ── Settings textarea ────────────────────────────────────────────────────── */
 
 .linker-settings-text-box {
     min-width: 200px;
     min-height: 60px;
 }
 
+/* ── Multiple-references hover interaction ────────────────────────────────── */
 
 .virtual-link-span:hover .multiple-files-references {
     display: inline;
@@ -34,4 +58,27 @@ If your plugin does not need CSS, delete this file.
 
 .multiple-files-indicator {
     display: inline;
+}
+
+/* ── Display-text highlight ───────────────────────────────────────────────── */
+
+/*
+  Applied to text inside a note when the user arrived there by clicking a
+  virtual link with display text.  Cleared automatically when the note is
+  closed.
+*/
+
+/* Reading-mode: DOM <mark> elements injected by applyHighlightToDOM(). */
+mark.autolink-highlight {
+    background-color: var(--text-highlight-bg, rgba(255, 213, 0, 0.28));
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+/* Live-preview: CM6 mark decoration (class="autolink-highlight") wrapping
+   plain text runs, plus the wrapper span for highlighted virtual-link widgets. */
+.autolink-highlight {
+    background-color: var(--text-highlight-bg, rgba(255, 213, 0, 0.28));
+    border-radius: 2px;
 }

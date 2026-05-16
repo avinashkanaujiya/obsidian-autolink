@@ -7,6 +7,7 @@ import IntervalTree from '@flatten-js/interval-tree';
 import { LinkerPluginSettings } from 'main';
 import { ExternalUpdateManager, LinkerCache, PrefixTree } from './linkerCache';
 import { VirtualMatch } from './virtualLinkDom';
+import { escapeRegex, HighlightService } from './highlightService';
 
 function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth: number = 10) {
     let node = child.parentNode;
@@ -22,11 +23,15 @@ function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth: number 
 }
 
 export class VirtualLinkWidget extends WidgetType {
-    constructor(public match: VirtualMatch) {
+    constructor(public match: VirtualMatch, public isHighlighted: boolean = false) {
         super();
     }
-    toDOM(view: EditorView): HTMLElement {
-        return this.match.getCompleteLinkElement();
+    toDOM(_view: EditorView): HTMLElement {
+        const el = this.match.getCompleteLinkElement();
+        if (this.isHighlighted) {
+            el.classList.add('autolink-highlight');
+        }
+        return el;
     }
 }
 
@@ -37,16 +42,18 @@ class AutoLinkerPlugin implements PluginValue {
     linkerCache: LinkerCache;
 
     settings: LinkerPluginSettings;
+    highlightService: HighlightService | null;
 
     private lastCursorPos: number = 0;
     private lastActiveFile: string = '';
     private lastViewUpdate: ViewUpdate | null = null;
     private updateManager: ExternalUpdateManager;
     private updateCallback: () => void;
+    private highlightUnsubscribe: (() => void) | null = null;
 
     viewUpdateDomToFileMap: Map<HTMLElement, TFile | undefined | null> = new Map();
 
-    constructor(view: EditorView, app: App, settings: LinkerPluginSettings, updateManager: ExternalUpdateManager) {
+    constructor(view: EditorView, app: App, settings: LinkerPluginSettings, updateManager: ExternalUpdateManager, highlightService: HighlightService | null = null) {
         this.app = app;
         this.settings = settings;
         this.updateManager = updateManager;
@@ -55,6 +62,7 @@ class AutoLinkerPlugin implements PluginValue {
         this.vault = vault;
 
         this.linkerCache = LinkerCache.getInstance(app, this.settings);
+        this.highlightService = highlightService;
 
         this.decorations = this.buildDecorations(view);
 
@@ -64,6 +72,14 @@ class AutoLinkerPlugin implements PluginValue {
             }
         };
         updateManager.registerCallback(this.updateCallback);
+
+        if (highlightService) {
+            this.highlightUnsubscribe = highlightService.onUpdate(() => {
+                if (this.lastViewUpdate) {
+                    this.update(this.lastViewUpdate, true);
+                }
+            });
+        }
     }
 
     update(update: ViewUpdate, force: boolean = false) {
@@ -101,6 +117,7 @@ class AutoLinkerPlugin implements PluginValue {
 
     destroy() {
         this.updateManager.deregisterCallback(this.updateCallback);
+        if (this.highlightUnsubscribe) this.highlightUnsubscribe();
     }
 
     buildDecorations(view: EditorView, viewIsActive: boolean = true): DecorationSet {
@@ -258,6 +275,25 @@ class AutoLinkerPlugin implements PluginValue {
             const lineStart = view.state.doc.lineAt(cursorPos).from;
             const lineEnd = view.state.doc.lineAt(cursorPos).to;
 
+            // Collect all decorations so we can sort them before adding to builder
+            // (builder requires strictly ascending `from` positions).
+            type DecoSpec = { from: number; to: number; deco: Decoration };
+            const decoSpecs: DecoSpec[] = [];
+
+            // Determine whether highlight decorations should be added for this view.
+            const currentFilePath =
+                mappedFile?.path ?? this.app.workspace.getActiveFile()?.path;
+            const highlightText = currentFilePath
+                ? (this.highlightService?.getActive(currentFilePath) ?? null)
+                : null;
+            const highlightRegex = highlightText
+                ? new RegExp(escapeRegex(highlightText), 'gi')
+                : null;
+
+            // Set of virtual-link ranges (serialised as "from-to") so we can
+            // avoid adding duplicate mark decorations over replaced ranges.
+            const virtualLinkRangeKeys = new Set<string>();
+
             matches.forEach((addition) => {
                 const [from, to] = [addition.from, addition.to];
                 const cursorNearby = cursorPos >= from - 0 && cursorPos <= to + 0;
@@ -298,16 +334,42 @@ class AutoLinkerPlugin implements PluginValue {
                 }
 
                 if (!cursorNearby && !needImeFix && !(excludeLine && additionIsInCurrentLine)) {
-                    builder.add(
+                    const isHighlighted =
+                        highlightText != null &&
+                        addition.originText.toLowerCase() === highlightText.toLowerCase();
+
+                    decoSpecs.push({
                         from,
                         to,
-                        Decoration.replace({
-                            // widget: addition.widget,
-                            widget: new VirtualLinkWidget(addition),
-                        })
-                    );
+                        deco: Decoration.replace({ widget: new VirtualLinkWidget(addition, isHighlighted) }),
+                    });
+                    virtualLinkRangeKeys.add(`${from}-${to}`);
                 }
             });
+
+            // Add mark decorations for plain-text occurrences of the highlight
+            // term that are NOT already covered by a virtual-link widget.
+            if (highlightRegex) {
+                let m: RegExpExecArray | null;
+                while ((m = highlightRegex.exec(text)) !== null) {
+                    const mFrom = from + m.index;
+                    const mTo = mFrom + m[0].length;
+                    if (!virtualLinkRangeKeys.has(`${mFrom}-${mTo}`)) {
+                        decoSpecs.push({
+                            from: mFrom,
+                            to: mTo,
+                            deco: Decoration.mark({ class: 'autolink-highlight' }),
+                        });
+                    }
+                }
+            }
+
+            // Sort all decoration specs by ascending `from` (then `to`) before
+            // adding to the builder, as required by CM6.
+            decoSpecs.sort((a, b) => a.from !== b.from ? a.from - b.from : a.to - b.to);
+            for (const { from: f, to: t, deco } of decoSpecs) {
+                builder.add(f, t, deco);
+            }
         }
 
         return builder.finish();
@@ -318,8 +380,13 @@ const pluginSpec: PluginSpec<AutoLinkerPlugin> = {
     decorations: (value: AutoLinkerPlugin) => value.decorations,
 };
 
-export const liveLinkerPlugin = (app: App, settings: LinkerPluginSettings, updateManager: ExternalUpdateManager) => {
+export const liveLinkerPlugin = (
+    app: App,
+    settings: LinkerPluginSettings,
+    updateManager: ExternalUpdateManager,
+    highlightService: HighlightService | null = null
+) => {
     return ViewPlugin.define((editorView: EditorView) => {
-        return new AutoLinkerPlugin(editorView, app, settings, updateManager);
+        return new AutoLinkerPlugin(editorView, app, settings, updateManager, highlightService);
     }, pluginSpec);
 };

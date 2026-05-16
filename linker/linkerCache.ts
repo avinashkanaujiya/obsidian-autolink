@@ -217,6 +217,21 @@ export class PrefixTree {
         const metadata = this.app.metadataCache.getFileCache(file);
         let aliases: string[] = metadata?.frontmatter?.aliases ?? [];
 
+        // Collect values from additional user-configured frontmatter fields.
+        // These are always included (independent of the includeAliases toggle)
+        // so users can dedicate separate fields for linking without polluting
+        // the standard `aliases` field used by Obsidian's Quick Switcher.
+        const customFields: string[] = this.settings.customFrontmatterFields ?? [];
+        const customTerms: string[] = [];
+        for (const field of customFields) {
+            const raw = metadata?.frontmatter?.[field];
+            if (!raw) continue;
+            const values: unknown[] = Array.isArray(raw) ? raw : [raw];
+            for (const v of values) {
+                if (typeof v === 'string' && v.trim().length > 0) customTerms.push(v);
+            }
+        }
+
         let aliasesWithMatchCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToMatchCase] ?? []);
         let aliasesWithIgnoreCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToIgnoreCase] ?? []);
 
@@ -236,6 +251,11 @@ export class PrefixTree {
         let names = [file.basename];
         if (aliases && this.settings.includeAliases) {
             names.push(...aliases);
+        }
+        // Always add custom frontmatter terms (controlled via settings, not the
+        // includeAliases toggle).
+        if (customTerms.length > 0) {
+            names.push(...customTerms.filter(PrefixTree.isNoneEmptyString));
         }
 
         names = names.filter(PrefixTree.isNoneEmptyString);

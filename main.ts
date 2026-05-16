@@ -4,6 +4,7 @@ import { GlossaryLinker } from './linker/readModeLinker';
 import { liveLinkerPlugin } from './linker/liveLinker';
 import { ExternalUpdateManager, LinkerCache } from 'linker/linkerCache';
 import { LinkerMetaInfoFetcher } from 'linker/linkerInfo';
+import { HighlightService, applyHighlightToDOM } from 'linker/highlightService';
 
 import * as path from 'path';
 
@@ -41,6 +42,7 @@ export interface LinkerPluginSettings {
     onlyLinkOnce: boolean;
     excludeLinksToRealLinkedFiles: boolean;
     includeAliases: boolean;
+    customFrontmatterFields: string[];
     alwaysShowMultipleReferences: boolean;
     // wordBoundaryRegex: string;
     // conversionFormat
@@ -80,6 +82,7 @@ const DEFAULT_SETTINGS: LinkerPluginSettings = {
     onlyLinkOnce: true,
     excludeLinksToRealLinkedFiles: true,
     includeAliases: true,
+    customFrontmatterFields: [],
     alwaysShowMultipleReferences: false,
     // wordBoundaryRegex: '/[\t- !-/:-@\[-`{-~\p{Emoji_Presentation}\p{Extended_Pictographic}]/u',
 };
@@ -87,6 +90,7 @@ const DEFAULT_SETTINGS: LinkerPluginSettings = {
 export default class LinkerPlugin extends Plugin {
     settings: LinkerPluginSettings;
     updateManager = new ExternalUpdateManager();
+    highlightService = new HighlightService();
 
     async onload() {
         await this.loadSettings();
@@ -96,19 +100,83 @@ export default class LinkerPlugin extends Plugin {
             LinkerCache.getInstance(this.app, this.settings).clearCache();
         });
 
-        // Register the glossary linker for the read mode
+        // Register the glossary linker for the read mode.
+        // The second post-processor applies highlight marks for notes opened
+        // via a virtual-link click.
         this.registerMarkdownPostProcessor((element, context) => {
             context.addChild(new GlossaryLinker(this.app, this.settings, context, element));
         });
 
+        this.registerMarkdownPostProcessor((element, context) => {
+            const searchText = this.highlightService.getActive(context.sourcePath);
+            if (searchText) applyHighlightToDOM(element, searchText);
+        });
+
         // Register the live linker for the live edit mode
-        this.registerEditorExtension(liveLinkerPlugin(this.app, this.settings, this.updateManager));
+        this.registerEditorExtension(liveLinkerPlugin(this.app, this.settings, this.updateManager, this.highlightService));
 
         // This adds a settings tab so the user can configure various aspects of the plugin
         this.addSettingTab(new LinkerSettingTab(this.app, this));
 
         // Context menu item to convert virtual links to real links
         this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => this.addContextMenuItem(menu, file, source)));
+
+        // ----------------------------------------------------------------
+        // Display-text highlight: intercept virtual-link clicks.
+        // We use the capture phase so this fires before Obsidian's own
+        // internal-link handler navigates away from the current note.
+        // ----------------------------------------------------------------
+        this.registerDomEvent(document, 'click', (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            const anchor = target.closest('.virtual-link-a') as HTMLAnchorElement | null;
+            if (!anchor) return;
+
+            const searchText = anchor.getAttribute('origin-text');
+            const href = anchor.getAttribute('href');
+            if (searchText && href) {
+                this.highlightService.setPending(href, searchText);
+            }
+        }, true /* capture */);
+
+        // Promote pending highlight when the target file opens and apply it.
+        this.registerEvent(
+            this.app.workspace.on('file-open', (file) => {
+                if (!file) return;
+
+                const searchText = this.highlightService.activateForFile(file.path);
+                if (!searchText) return;
+
+                // Trigger a CM6 re-render so live-preview gets the decorations.
+                this.updateManager.update();
+
+                // Apply directly to already-rendered reading-mode DOM.
+                // A short delay lets the content finish rendering first.
+                requestAnimationFrame(() => {
+                    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                    if (!view || view.file?.path !== file.path) return;
+
+                    const readingEl = view.contentEl.querySelector(
+                        '.markdown-reading-view, .markdown-preview-view'
+                    );
+                    if (readingEl instanceof HTMLElement) {
+                        applyHighlightToDOM(readingEl, searchText);
+                    }
+                });
+            })
+        );
+
+        // Remove stale highlights for notes that have been closed.
+        this.registerEvent(
+            this.app.workspace.on('layout-change', () => {
+                const openPaths = new Set<string>();
+                this.app.workspace.iterateAllLeaves(leaf => {
+                    if (leaf.view instanceof MarkdownView && leaf.view.file) {
+                        openPaths.add(leaf.view.file.path);
+                    }
+                });
+                this.highlightService.clearStale(openPaths);
+            })
+        );
 
         this.addCommand({
             id: 'activate-virtual-linker',
@@ -580,6 +648,28 @@ class LinkerSettingTab extends PluginSettingTab {
                     await this.plugin.updateSettings({ includeAliases: value });
                 })
             );
+
+        // Custom frontmatter fields for linking candidates
+        new Setting(containerEl)
+            .setName('Custom frontmatter fields for linking')
+            .setDesc(
+                'Additional frontmatter property names (one per line) whose values are used as ' +
+                'link candidates, independent of the aliases toggle. ' +
+                'Use this to keep your aliases clean while still creating virtual links from ' +
+                'dedicated fields such as `linker-terms` or `keywords`.'
+            )
+            .addTextArea((text) => {
+                text.setPlaceholder('e.g. linker-terms\nkeywords')
+                    .setValue((this.plugin.settings.customFrontmatterFields ?? []).join('\n'))
+                    .onChange(async (value) => {
+                        const fields = value
+                            .split('\n')
+                            .map(v => v.trim())
+                            .filter(v => v.length > 0);
+                        await this.plugin.updateSettings({ customFrontmatterFields: fields });
+                    });
+                text.inputEl.addClass('linker-settings-text-box');
+            });
 
         if (this.plugin.settings.advancedSettings) {
             // Toggle to only link once
