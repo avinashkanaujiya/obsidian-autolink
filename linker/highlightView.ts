@@ -1,5 +1,5 @@
 import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
-import { HighlightService, escapeRegex } from './highlightService';
+import { findFirstMatch, HighlightService } from './highlightService';
 
 export const HIGHLIGHT_VIEW_TYPE = 'autolink-highlight-view';
 
@@ -112,21 +112,20 @@ export class HighlightView extends ItemView {
 
     private findOccurrences(content: string, searchText: string, startLine = 0): Occurrence[] {
         const lines  = content.split('\n');
-        const regex  = new RegExp(escapeRegex(searchText), 'gi');
         const result: Occurrence[] = [];
 
         for (let lineNum = startLine; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
-            let m: RegExpExecArray | null;
-            while ((m = regex.exec(line)) !== null) {
-                result.push({
-                    index:     result.length,
-                    line:      lineNum,
-                    ch:        m.index,
-                    matchText: m[0],
-                    rawLine:   line,
-                });
-            }
+            const match = findFirstMatch(line, searchText);
+            if (!match) continue;
+
+            result.push({
+                index:     result.length,
+                line:      lineNum,
+                ch:        match.index,
+                matchText: match.matchText,
+                rawLine:   line,
+            });
         }
         return result;
     }
@@ -211,7 +210,7 @@ export class HighlightView extends ItemView {
         }
     }
 
-    /** Render a windowed snippet centred on the match, with match highlighted. */
+    /** Render a windowed snippet centred on the chosen match, highlighting it once. */
     private renderContextLine(
         el: HTMLElement,
         rawLine: string,
@@ -222,33 +221,33 @@ export class HighlightView extends ItemView {
         const PAD    = 20;
 
         let start = Math.max(0, matchStart - PAD);
-        const end   = Math.min(rawLine.length, start + WINDOW);
+        const end   = Math.min(rawLine.length, Math.max(matchStart + matchText.length, start + WINDOW));
         start     = Math.max(0, end - WINDOW);
 
         const prefix = start > 0            ? '…' : '';
         const suffix = end < rawLine.length ? '…' : '';
         const slice  = rawLine.slice(start, end);
 
-        const frag  = document.createDocumentFragment();
-        const regex = new RegExp(escapeRegex(matchText), 'gi');
-        let last = 0, m: RegExpExecArray | null;
+        const frag = document.createDocumentFragment();
+        const relStart = Math.max(0, matchStart - start);
+        const relEnd = Math.min(slice.length, relStart + matchText.length);
 
         if (prefix) frag.appendChild(document.createTextNode(prefix));
-
-        while ((m = regex.exec(slice)) !== null) {
-            if (m.index > last)
-                frag.appendChild(document.createTextNode(slice.slice(last, m.index)));
-            const mark = document.createElement('mark');
-            mark.className = 'autolink-highlight';
-            mark.textContent = m[0];
-            frag.appendChild(mark);
-            last = m.index + m[0].length;
+        if (relStart > 0) {
+            frag.appendChild(document.createTextNode(slice.slice(0, relStart)));
         }
 
-        if (last < slice.length)
-            frag.appendChild(document.createTextNode(slice.slice(last)));
-        if (suffix)
+        const mark = document.createElement('mark');
+        mark.className = 'autolink-highlight';
+        mark.textContent = slice.slice(relStart, relEnd);
+        frag.appendChild(mark);
+
+        if (relEnd < slice.length) {
+            frag.appendChild(document.createTextNode(slice.slice(relEnd)));
+        }
+        if (suffix) {
             frag.appendChild(document.createTextNode(suffix));
+        }
 
         el.appendChild(frag);
     }

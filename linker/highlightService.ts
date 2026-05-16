@@ -87,10 +87,31 @@ export function escapeRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+export interface TextMatch {
+    index: number;
+    matchText: string;
+}
+
 /**
- * Inject `<mark class="autolink-highlight">` around every case-insensitive
- * occurrence of `searchText` inside `containerEl`, then scroll to the first
- * match.  Calling this again removes previous marks before adding new ones.
+ * Finds the first case-insensitive match of `searchText` in `text`.
+ */
+export function findFirstMatch(text: string, searchText: string): TextMatch | null {
+    if (!searchText) return null;
+
+    const match = new RegExp(escapeRegex(searchText), 'i').exec(text);
+    if (!match) return null;
+
+    return {
+        index: match.index,
+        matchText: match[0],
+    };
+}
+
+/**
+ * Inject `<mark class="autolink-highlight">` around the first case-insensitive
+ * occurrence of `searchText` per rendered line segment inside `containerEl`,
+ * then scroll to the first match. Calling this again removes previous marks
+ * before adding new ones.
  */
 export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string): void {
     // Remove previous highlights so repeated calls are idempotent.
@@ -102,8 +123,6 @@ export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string
     });
 
     if (!searchText) return;
-
-    const regex = new RegExp(escapeRegex(searchText), 'gi');
 
     // Walk only plain text nodes; skip code, pre, script, style, and the
     // Obsidian Properties / frontmatter panel (.metadata-container).
@@ -125,33 +144,47 @@ export function applyHighlightToDOM(containerEl: HTMLElement, searchText: string
 
     for (const textNode of textNodes) {
         const text = textNode.textContent ?? '';
-        if (!regex.test(text)) { regex.lastIndex = 0; continue; }
-        regex.lastIndex = 0;
+        if (!text) continue;
 
         const parent = textNode.parentNode;
         if (!parent) continue;
 
         const frag = document.createDocumentFragment();
-        let lastIndex = 0;
-        let m: RegExpExecArray | null;
+        let replaced = false;
 
-        while ((m = regex.exec(text)) !== null) {
-            if (m.index > lastIndex) {
-                frag.appendChild(document.createTextNode(text.slice(lastIndex, m.index)));
+        for (const segment of text.split(/(\n)/)) {
+            if (segment === '\n') {
+                frag.appendChild(document.createTextNode(segment));
+                continue;
             }
+
+            const match = findFirstMatch(segment, searchText);
+            if (!match) {
+                frag.appendChild(document.createTextNode(segment));
+                continue;
+            }
+
+            if (match.index > 0) {
+                frag.appendChild(document.createTextNode(segment.slice(0, match.index)));
+            }
+
             const mark = document.createElement('mark');
             mark.className = 'autolink-highlight';
-            mark.textContent = m[0];
+            mark.textContent = match.matchText;
             frag.appendChild(mark);
             if (!firstMark) firstMark = mark;
-            lastIndex = m.index + m[0].length;
+
+            const afterIndex = match.index + match.matchText.length;
+            if (afterIndex < segment.length) {
+                frag.appendChild(document.createTextNode(segment.slice(afterIndex)));
+            }
+
+            replaced = true;
         }
 
-        if (lastIndex < text.length) {
-            frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+        if (replaced) {
+            parent.replaceChild(frag, textNode);
         }
-
-        parent.replaceChild(frag, textNode);
     }
 
     if (firstMark) {

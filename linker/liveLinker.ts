@@ -8,7 +8,7 @@ import { LinkerPluginSettings } from 'main';
 import { ExternalUpdateManager, LinkerCache, PrefixTree } from './linkerCache';
 import { matchesDirectorySetting } from './linkerInfo';
 import { VirtualMatch } from './virtualLinkDom';
-import { escapeRegex, HighlightService } from './highlightService';
+import { findFirstMatch, HighlightService } from './highlightService';
 
 function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth = 10) {
     let node = child.parentNode;
@@ -143,6 +143,9 @@ class AutoLinkerPlugin implements PluginValue {
 
         // Set to exclude files that are already linked by a virtual link
         const alreadyLinkedFiles = new Set<TFile>();
+
+        // Highlight at most one occurrence per visible document line.
+        const highlightedLineNumbers = new Set<number>();
 
         for (const { from, to } of view.visibleRanges) {
             this.linkerCache.reset();
@@ -288,13 +291,17 @@ class AutoLinkerPlugin implements PluginValue {
             const highlightText = currentFilePath
                 ? (this.highlightService?.getActive(currentFilePath) ?? null)
                 : null;
-            const highlightRegex = highlightText
-                ? new RegExp(escapeRegex(highlightText), 'gi')
-                : null;
+            const highlightTextLower = highlightText?.toLowerCase() ?? null;
+            const fmEndOffset = mappedFile
+                ? (this.app.metadataCache.getFileCache(mappedFile)?.frontmatterPosition?.end.offset ?? -1)
+                : -1;
+
+            type WidgetAddition = { match: VirtualMatch; from: number; to: number };
 
             // Set of virtual-link ranges (serialised as "from-to") so we can
             // avoid adding duplicate mark decorations over replaced ranges.
             const virtualLinkRangeKeys = new Set<string>();
+            const widgetAdditions: WidgetAddition[] = [];
 
             matches.forEach((addition) => {
                 const [from, to] = [addition.from, addition.to];
@@ -336,41 +343,81 @@ class AutoLinkerPlugin implements PluginValue {
                 }
 
                 if (!cursorNearby && !needImeFix && !(excludeLine && additionIsInCurrentLine)) {
-                    const isHighlighted =
-                        highlightText != null &&
-                        addition.originText.toLowerCase() === highlightText.toLowerCase();
-
-                    decoSpecs.push({
-                        from,
-                        to,
-                        deco: Decoration.replace({ widget: new VirtualLinkWidget(addition, isHighlighted) }),
-                    });
+                    widgetAdditions.push({ match: addition, from, to });
                     virtualLinkRangeKeys.add(`${from}-${to}`);
                 }
             });
 
-            // Add mark decorations for plain-text occurrences of the highlight
-            // term that are NOT already covered by a virtual-link widget and are
-            // NOT inside the frontmatter block (aliases/tags there are hidden by
-            // the Properties widget and would mislead the scroll-to-highlight).
-            if (highlightRegex) {
-                const fmEndOffset = mappedFile
-                    ? (this.app.metadataCache.getFileCache(mappedFile)?.frontmatterPosition?.end.offset ?? -1)
-                    : -1;
-                let m: RegExpExecArray | null;
-                while ((m = highlightRegex.exec(text)) !== null) {
-                    const mFrom = from + m.index;
-                    const mTo = mFrom + m[0].length;
-                    // Skip positions that fall inside the frontmatter block.
-                    if (fmEndOffset >= 0 && mFrom <= fmEndOffset) continue;
-                    if (!virtualLinkRangeKeys.has(`${mFrom}-${mTo}`)) {
+            const highlightedVirtualLinkKeys = new Set<string>();
+
+            if (highlightTextLower && highlightText) {
+                const firstHighlightableWidgetByLine = new Map<number, WidgetAddition>();
+                for (const widgetAddition of widgetAdditions) {
+                    if (widgetAddition.match.originText.toLowerCase() !== highlightTextLower) continue;
+                    if (fmEndOffset >= 0 && widgetAddition.from <= fmEndOffset) continue;
+
+                    const lineNumber = view.state.doc.lineAt(widgetAddition.from).number;
+                    if (!firstHighlightableWidgetByLine.has(lineNumber)) {
+                        firstHighlightableWidgetByLine.set(lineNumber, widgetAddition);
+                    }
+                }
+
+                const startLineNumber = view.state.doc.lineAt(from).number;
+                const lines = text.split('\n');
+                let lineOffset = 0;
+
+                for (let i = 0; i < lines.length; i++) {
+                    const lineText = lines[i];
+                    const lineNumber = startLineNumber + i;
+                    const lineStartOffset = from + lineOffset;
+                    lineOffset += lineText.length + 1;
+
+                    if (highlightedLineNumbers.has(lineNumber)) continue;
+
+                    const widgetAddition = firstHighlightableWidgetByLine.get(lineNumber) ?? null;
+                    const plainMatch = findFirstMatch(lineText, highlightText);
+                    const plainFrom = plainMatch ? lineStartOffset + plainMatch.index : null;
+                    const plainTo = plainMatch && plainFrom != null ? plainFrom + plainMatch.matchText.length : null;
+
+                    let highlightVirtualLink = false;
+                    if (widgetAddition && plainFrom != null) {
+                        highlightVirtualLink = widgetAddition.from <= plainFrom;
+                    } else if (widgetAddition) {
+                        highlightVirtualLink = true;
+                    }
+
+                    if (highlightVirtualLink && widgetAddition) {
+                        highlightedVirtualLinkKeys.add(`${widgetAddition.from}-${widgetAddition.to}`);
+                        highlightedLineNumbers.add(lineNumber);
+                        continue;
+                    }
+
+                    if (plainFrom == null || plainTo == null) continue;
+                    if (fmEndOffset >= 0 && plainFrom <= fmEndOffset) continue;
+
+                    const plainKey = `${plainFrom}-${plainTo}`;
+                    if (virtualLinkRangeKeys.has(plainKey)) {
+                        highlightedVirtualLinkKeys.add(plainKey);
+                    } else {
                         decoSpecs.push({
-                            from: mFrom,
-                            to: mTo,
+                            from: plainFrom,
+                            to: plainTo,
                             deco: Decoration.mark({ class: 'autolink-highlight' }),
                         });
                     }
+                    highlightedLineNumbers.add(lineNumber);
                 }
+            }
+
+            for (const widgetAddition of widgetAdditions) {
+                const key = `${widgetAddition.from}-${widgetAddition.to}`;
+                decoSpecs.push({
+                    from: widgetAddition.from,
+                    to: widgetAddition.to,
+                    deco: Decoration.replace({
+                        widget: new VirtualLinkWidget(widgetAddition.match, highlightedVirtualLinkKeys.has(key)),
+                    }),
+                });
             }
 
             // Sort all decoration specs by ascending `from` (then `to`) before

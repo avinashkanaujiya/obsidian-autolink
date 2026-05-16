@@ -56,6 +56,42 @@ function makeHighlightView(params: {
     return view;
 }
 
+describe('HighlightView.findOccurrences', () => {
+    it('keeps only the first occurrence per line', () => {
+        const view = new HighlightView({} as any, new HighlightService()) as any;
+
+        const occurrences = view.findOccurrences(
+            'alpha alpha\nbeta alpha alpha\nno match here\nALPHA again',
+            'alpha',
+            0,
+        );
+
+        expect(occurrences).toEqual([
+            {
+                index: 0,
+                line: 0,
+                ch: 0,
+                matchText: 'alpha',
+                rawLine: 'alpha alpha',
+            },
+            {
+                index: 1,
+                line: 1,
+                ch: 5,
+                matchText: 'alpha',
+                rawLine: 'beta alpha alpha',
+            },
+            {
+                index: 2,
+                line: 3,
+                ch: 0,
+                matchText: 'ALPHA',
+                rawLine: 'ALPHA again',
+            },
+        ]);
+    });
+});
+
 describe('HighlightView.refresh', () => {
     it('renders highlights for the currently visible note, not the first open highlighted note', async () => {
         const hs = new HighlightService();
