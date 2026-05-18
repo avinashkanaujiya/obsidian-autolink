@@ -100,7 +100,7 @@ export class GlossaryLinker extends MarkdownRenderChild {
                             // If we are at a word boundary, get the current fitting files
                             const isWordBoundary = PrefixTree.checkWordBoundary(char); // , this.settings.wordBoundaryRegex
                             if (this.settings.matchAnyPartsOfWords || this.settings.matchBeginningOfWords || isWordBoundary) {
-                                const currentNodes = this.linkerCache.cache.getCurrentMatchNodes(i);
+                                const currentNodes = this.linkerCache.cache.getCurrentMatchNodes(i, this.ctx.sourcePath);
                                 if (currentNodes.length > 0) {
                                     currentNodes.forEach((node) => {
                                         // Check if we want to include this note based on the settings

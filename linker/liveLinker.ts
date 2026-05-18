@@ -23,6 +23,23 @@ function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth = 10) {
     return false;
 }
 
+export function resolveMarkdownViewForEditorDOM(app: App, editorDom: HTMLElement): MarkdownView | null {
+    let resolvedView: MarkdownView | null = null;
+
+    app.workspace.iterateAllLeaves((leaf) => {
+        if (resolvedView || !(leaf.view instanceof MarkdownView)) {
+            return;
+        }
+
+        const contentEl = leaf.view.contentEl;
+        if (contentEl && isDescendant(contentEl, editorDom)) {
+            resolvedView = leaf.view;
+        }
+    });
+
+    return resolvedView;
+}
+
 export class VirtualLinkWidget extends WidgetType {
     constructor(
         public match: VirtualMatch,
@@ -74,13 +91,11 @@ class AutoLinkerPlugin implements PluginValue {
     highlightService: HighlightService | null;
 
     private lastCursorPos = 0;
-    private lastActiveFile = '';
+    private lastSourceFilePath = '';
     private lastViewUpdate: ViewUpdate | null = null;
     private updateManager: ExternalUpdateManager;
     private updateCallback: () => void;
     private highlightUnsubscribe: (() => void) | null = null;
-
-    viewUpdateDomToFileMap: Map<HTMLElement, TFile | undefined | null> = new Map();
 
     constructor(view: EditorView, app: App, settings: LinkerPluginSettings, updateManager: ExternalUpdateManager, highlightService: HighlightService | null = null) {
         this.app = app;
@@ -93,7 +108,8 @@ class AutoLinkerPlugin implements PluginValue {
         this.linkerCache = LinkerCache.getInstance(app, this.settings);
         this.highlightService = highlightService;
 
-        this.decorations = this.buildDecorations(view);
+        const { sourceFile, viewIsActive } = this.resolveSourceContext(view);
+        this.decorations = this.buildDecorations(view, sourceFile, viewIsActive);
 
         this.updateCallback = () => {
             if (this.lastViewUpdate) {
@@ -112,33 +128,16 @@ class AutoLinkerPlugin implements PluginValue {
     }
 
     update(update: ViewUpdate, force = false) {
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-
-        // Check if the update is on the active view. We only need to check this, if one of the following settings is enabled
-        // - fixIMEProblem
-        // - excludeLinksToOwnNote
-        // - excludeLinksInCurrentLine
-        let updateIsOnActiveView = false;
-        if (this.settings.fixIMEProblem || this.settings.excludeLinksInCurrentLine || this.settings.excludeLinksToOwnNote) {
-            const domFromUpdate = update.view.dom;
-            const domFromWorkspace = activeView?.contentEl;
-            updateIsOnActiveView = domFromWorkspace ? isDescendant(domFromWorkspace, domFromUpdate, 3) : false;
-
-            // We store this information to be able to map the view updates to a obsidian file
-            if (updateIsOnActiveView) {
-                this.viewUpdateDomToFileMap.set(domFromUpdate, activeView?.file);
-            }
-        }
-
+        const { sourceFile, viewIsActive } = this.resolveSourceContext(update.view);
         const cursorPos = update.view.state.selection.main.from;
-        const activeFile = this.app.workspace.getActiveFile()?.path;
-        const fileChanged = activeFile != this.lastActiveFile;
+        const sourceFilePath = sourceFile?.path ?? '';
+        const fileChanged = sourceFilePath !== this.lastSourceFilePath;
 
-        if (force || this.lastCursorPos != cursorPos || update.docChanged || fileChanged || update.viewportChanged) {
+        if (force || this.lastCursorPos !== cursorPos || update.docChanged || fileChanged || update.viewportChanged) {
             this.lastCursorPos = cursorPos;
             this.linkerCache.updateCache(force);
-            this.decorations = this.buildDecorations(update.view, updateIsOnActiveView);
-            this.lastActiveFile = activeFile ?? '';
+            this.decorations = this.buildDecorations(update.view, sourceFile, viewIsActive);
+            this.lastSourceFilePath = sourceFilePath;
         }
 
         this.lastViewUpdate = update;
@@ -149,20 +148,27 @@ class AutoLinkerPlugin implements PluginValue {
         if (this.highlightUnsubscribe) this.highlightUnsubscribe();
     }
 
-    buildDecorations(view: EditorView, viewIsActive = true): DecorationSet {
+    private resolveSourceContext(view: EditorView): { sourceFile: TFile | null; viewIsActive: boolean } {
+        const markdownView = resolveMarkdownViewForEditorDOM(this.app, view.dom);
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+
+        return {
+            sourceFile: markdownView?.file ?? null,
+            viewIsActive: markdownView !== null && markdownView === activeView,
+        };
+    }
+
+    buildDecorations(view: EditorView, sourceFile: TFile | null = null, viewIsActive = true): DecorationSet {
         const builder = new RangeSetBuilder<Decoration>();
 
         if (!this.settings.linkerActivated) {
             return builder.finish();
         }
 
-        const dom = view.dom;
-        const mappedFile = this.viewUpdateDomToFileMap.get(dom);
-
         // Check if the file is inside excluded folders
         const excludedFolders = this.settings.excludedDirectoriesForLinking;
         if (excludedFolders.length > 0) {
-            const parentPath = mappedFile?.parent?.path ?? this.app.workspace.getActiveFile()?.parent?.path;
+            const parentPath = sourceFile?.parent?.path;
             if (parentPath && matchesDirectorySetting(parentPath, excludedFolders)) return builder.finish();
         }
 
@@ -196,7 +202,7 @@ class AutoLinkerPlugin implements PluginValue {
                 if (this.settings.matchAnyPartsOfWords || this.settings.matchBeginningOfWords || isWordBoundary) {
                     const currentNodes = this.linkerCache.cache.getCurrentMatchNodes(
                         i,
-                        this.settings.excludeLinksToOwnNote ? mappedFile : null
+                        this.settings.excludeLinksToOwnNote ? sourceFile?.path ?? null : null
                     );
 
                     if (currentNodes.length > 0) {
@@ -268,7 +274,7 @@ class AutoLinkerPlugin implements PluginValue {
 
                                 if (tList.every((tt) => types.includes(tt))) {
                                     const text = view.state.doc.sliceString(node.from, node.to);
-                                    const linkedFile = app.metadataCache.getFirstLinkpathDest(text, mappedFile?.path ?? '');
+                                    const linkedFile = app.metadataCache.getFirstLinkpathDest(text, sourceFile?.path ?? '');
                                     if (linkedFile) {
                                         explicitlyLinkedFiles.add(linkedFile);
                                     }
@@ -323,14 +329,13 @@ class AutoLinkerPlugin implements PluginValue {
             const decoSpecs: DecoSpec[] = [];
 
             // Determine whether highlight decorations should be added for this view.
-            const currentFilePath =
-                mappedFile?.path ?? this.app.workspace.getActiveFile()?.path;
+            const currentFilePath = sourceFile?.path;
             const highlightText = currentFilePath
                 ? (this.highlightService?.getActive(currentFilePath) ?? null)
                 : null;
             const highlightTextLower = highlightText?.toLowerCase() ?? null;
-            const fmEndOffset = mappedFile
-                ? (this.app.metadataCache.getFileCache(mappedFile)?.frontmatterPosition?.end.offset ?? -1)
+            const fmEndOffset = sourceFile
+                ? (this.app.metadataCache.getFileCache(sourceFile)?.frontmatterPosition?.end.offset ?? -1)
                 : -1;
 
             type WidgetAddition = { match: VirtualMatch; from: number; to: number; syntaxClasses: string[] };

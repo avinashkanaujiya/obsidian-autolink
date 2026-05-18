@@ -60,6 +60,7 @@ type MockApp = {
     vault: {
         getMarkdownFiles: () => TFile[];
         getFileByPath: (path: string) => TFile | null;
+        getAbstractFileByPath: (path: string) => TFile | null;
     };
     metadataCache: {
         getFileCache: (file: TFile) => MockFileCache;
@@ -78,6 +79,7 @@ function makeApp(files: TFile[] = []): MockApp {
         vault: {
             getMarkdownFiles: () => files,
             getFileByPath: (path: string) => fileMap.get(path) ?? null,
+            getAbstractFileByPath: (path: string) => fileMap.get(path) ?? null,
         },
         metadataCache: { getFileCache: (file: TFile) => fileCaches.get(file.path) ?? null },
         workspace: { getActiveFile: () => null },
@@ -107,6 +109,18 @@ function findInText(tree: PrefixTree, text: string): boolean {
         const ch = i < text.length ? text[i] : '\n';
         if (PrefixTree.checkWordBoundary(ch)) {
             if (tree.getCurrentMatchNodes(i).length > 0) return true;
+        }
+        tree.pushChar(ch);
+    }
+    return false;
+}
+
+function findMatchesInText(tree: PrefixTree, text: string, excludedNote?: string): boolean {
+    tree.resetSearch();
+    for (let i = 0; i <= text.length; i++) {
+        const ch = i < text.length ? text[i] : '\n';
+        if (PrefixTree.checkWordBoundary(ch)) {
+            if (tree.getCurrentMatchNodes(i, excludedNote).length > 0) return true;
         }
         tree.pushChar(ch);
     }
@@ -215,16 +229,17 @@ describe('PrefixTree trie search', () => {
     });
 
     it('removes a file from the tree after vault update', () => {
-        const file = makeFile('Glossary/Enzyme.md');
+        const file = makeFile('Glossary/enzyme.md');
         const tree = buildTree([file]);
-        expect(findInText(tree, 'Enzyme ')).toBe(true);
+        expect(findInText(tree, 'enzyme ')).toBe(true);
 
         // Simulate vault no longer containing the file
         const emptyApp = makeApp([]);
         tree.app = emptyApp as unknown as App;
         tree.updateTree();
 
-        expect(findInText(tree, 'Enzyme ')).toBe(false);
+        expect(findInText(tree, 'enzyme ')).toBe(false);
+        expect(tree.root.children.size).toBe(0);
     });
 
     it('finds a file after it is added via updateTree', () => {
@@ -250,6 +265,29 @@ describe('PrefixTree trie search', () => {
         });
         const tree = new PrefixTree(app as unknown as App, BASE_SETTINGS);
         expect(findInText(tree, 'DNA ')).toBe(true);
+    });
+
+    it('excludes self-links when the rendered note path is passed explicitly', () => {
+        const file = makeFile('Glossary/Enzyme.md');
+        const tree = buildTree([file]);
+
+        expect(findMatchesInText(tree, 'Enzyme ', 'Glossary/Enzyme.md')).toBe(false);
+    });
+
+    it('accepts scalar match-case frontmatter overrides', () => {
+        const file = makeFile('Glossary/Operating System.md');
+        const app = makeApp([file]);
+        app._setCache(file.path, {
+            frontmatter: {
+                aliases: ['MacOS'],
+                'linker-match-case': 'MacOS',
+            },
+            tags: null,
+        });
+
+        const tree = new PrefixTree(app as unknown as App, BASE_SETTINGS);
+        expect(findInText(tree, 'MacOS ')).toBe(true);
+        expect(findInText(tree, 'macos ')).toBe(false);
     });
 });
 

@@ -352,6 +352,8 @@ export default class LinkerPlugin extends Plugin {
     updateManager = new ExternalUpdateManager();
     highlightService = new HighlightService();
     private cacheRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    private pendingCacheRefreshPaths = new Set<string>();
+    private forceFullCacheRefresh = false;
 
     async onload() {
         await this.loadSettings();
@@ -499,7 +501,7 @@ export default class LinkerPlugin extends Plugin {
         this.registerEvent(
             this.app.metadataCache.on('changed', (file) => {
                 if (file instanceof TFile) {
-                    this.scheduleCacheRefresh();
+                    this.scheduleCacheRefresh([file.path]);
                 }
             })
         );
@@ -641,27 +643,52 @@ export default class LinkerPlugin extends Plugin {
             ? this.settings.defaultLinkFormat
             : this.settings.linkFormat;
 
-        if (replacementPath === displayText && linkFormat === 'shortest') {
-            return `[[${replacementPath}]]`;
-        }
-
         const resolvedPath = linkFormat === 'shortest' ? shortestPath
             : linkFormat === 'relative' ? relativePath
             : absolutePath;
+
+        if (replacementPath === displayText && linkFormat === 'shortest') {
+            return useMarkdownLinks
+                ? `[${displayText}](${resolvedPath})`
+                : `[[${replacementPath}]]`;
+        }
 
         return useMarkdownLinks
             ? `[${displayText}](${resolvedPath})`
             : `[[${resolvedPath}|${displayText}]]`;
     }
 
-    private scheduleCacheRefresh(): void {
+    private scheduleCacheRefresh(filePaths?: string[]): void {
+        if (!filePaths || filePaths.length === 0) {
+            this.forceFullCacheRefresh = true;
+            this.pendingCacheRefreshPaths.clear();
+        } else if (!this.forceFullCacheRefresh) {
+            filePaths
+                .map((filePath) => filePath.trim())
+                .filter((filePath) => filePath.length > 0)
+                .forEach((filePath) => this.pendingCacheRefreshPaths.add(filePath));
+        }
+
         if (this.cacheRefreshTimer !== null) {
             clearTimeout(this.cacheRefreshTimer);
         }
 
         this.cacheRefreshTimer = setTimeout(() => {
             this.cacheRefreshTimer = null;
-            LinkerCache.getInstance(this.app, this.settings).rebuildCache();
+
+            const cache = LinkerCache.getInstance(this.app, this.settings);
+            const pendingPaths = Array.from(this.pendingCacheRefreshPaths);
+            const forceFullCacheRefresh = this.forceFullCacheRefresh;
+
+            this.pendingCacheRefreshPaths.clear();
+            this.forceFullCacheRefresh = false;
+
+            if (forceFullCacheRefresh || pendingPaths.length === 0) {
+                cache.rebuildCache();
+            } else {
+                cache.updateFiles(pendingPaths);
+            }
+
             this.rerenderReadingViews();
             this.updateManager.update();
         }, 75);
@@ -1010,6 +1037,8 @@ export default class LinkerPlugin extends Plugin {
             clearTimeout(this.cacheRefreshTimer);
             this.cacheRefreshTimer = null;
         }
+        this.pendingCacheRefreshPaths.clear();
+        this.forceFullCacheRefresh = false;
         LinkerCache.resetInstance();
     }
 

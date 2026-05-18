@@ -83,11 +83,14 @@ export class PrefixTree {
         this.mapFilePathToLeaveNodes.clear();
     }
 
-    getCurrentMatchNodes(index: number, excludedNote?: TFile | null): MatchNode[] {
+    getCurrentMatchNodes(index: number, excludedNote?: TFile | string | null): MatchNode[] {
         const matchNodes: MatchNode[] = [];
 
+        let excludedNotePath = typeof excludedNote === 'string'
+            ? excludedNote
+            : excludedNote?.path;
         if (excludedNote === undefined && this.settings.excludeLinksToOwnNote) {
-            excludedNote = this.app.workspace.getActiveFile();
+            excludedNotePath = this.app.workspace.getActiveFile()?.path;
         }
 
         // From the current nodes in the trie, get all nodes that have files
@@ -98,7 +101,7 @@ export class PrefixTree {
             const matchNode = new MatchNode();
             matchNode.length = node.node.value.length + node.formattingDelta;
             matchNode.start = index - matchNode.length;
-            matchNode.files = new Set(Array.from(node.node.files).filter((file) => !excludedNote || file.path !== excludedNote.path));
+            matchNode.files = new Set(Array.from(node.node.files).filter((file) => !excludedNotePath || file.path !== excludedNotePath));
             matchNode.value = node.node.value;
             matchNode.requiresCaseMatch = node.node.requiresCaseMatch;
 
@@ -164,6 +167,22 @@ export class PrefixTree {
         return value !== null && value !== undefined && typeof value === 'string' && value.trim().length > 0;
     }
 
+    private static normalizeFrontmatterStringList(value: unknown): string[] {
+        if (typeof value === 'string') {
+            const normalizedValue = value.trim();
+            return normalizedValue.length > 0 ? [normalizedValue] : [];
+        }
+
+        if (!Array.isArray(value)) {
+            return [];
+        }
+
+        return value
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(PrefixTree.isNoneEmptyString);
+    }
+
     private static isUpperCaseString(value: string | null | undefined, upperCasePart = 0.75) {
         if (!PrefixTree.isNoneEmptyString(value)) {
             return false;
@@ -215,38 +234,28 @@ export class PrefixTree {
         }
 
         const metadata = this.app.metadataCache.getFileCache(file);
-        let aliases: string[] = metadata?.frontmatter?.aliases ?? [];
+        const aliases = PrefixTree.normalizeFrontmatterStringList(metadata?.frontmatter?.aliases);
 
         // Collect values from additional user-configured frontmatter fields.
         // These are always included (independent of the includeAliases toggle)
         // so users can dedicate separate fields for linking without polluting
         // the standard `aliases` field used by Obsidian's Quick Switcher.
         const customFields: string[] = this.settings.customFrontmatterFields ?? [];
-        const customTerms: string[] = [];
-        for (const field of customFields) {
-            const raw = metadata?.frontmatter?.[field];
-            if (!raw) continue;
-            const values: unknown[] = Array.isArray(raw) ? raw : [raw];
-            for (const v of values) {
-                if (typeof v === 'string' && v.trim().length > 0) customTerms.push(v);
-            }
-        }
+        const customTerms = customFields.reduce<string[]>((terms, field) => {
+            terms.push(...PrefixTree.normalizeFrontmatterStringList(metadata?.frontmatter?.[field]));
+            return terms;
+        }, []);
 
-        const aliasesWithMatchCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToMatchCase] ?? []);
-        const aliasesWithIgnoreCase: Set<string> = new Set(metadata?.frontmatter?.[this.settings.propertyNameToIgnoreCase] ?? []);
-
-
-        // If aliases is not an array, convert it to an array
-        if (!Array.isArray(aliases)) {
-            aliases = [aliases];
-        }
-
-        // Filter out empty aliases
-        try {
-            aliases = aliases.filter(PrefixTree.isNoneEmptyString);
-        } catch (e) {
-            console.error('[VL LC] Error filtering aliases', aliases, e);
-        }
+        const aliasesWithMatchCase = new Set(
+            PrefixTree.normalizeFrontmatterStringList(
+                metadata?.frontmatter?.[this.settings.propertyNameToMatchCase]
+            )
+        );
+        const aliasesWithIgnoreCase = new Set(
+            PrefixTree.normalizeFrontmatterStringList(
+                metadata?.frontmatter?.[this.settings.propertyNameToIgnoreCase]
+            )
+        );
 
         let names = [file.basename];
         if (aliases && this.settings.includeAliases) {
@@ -317,10 +326,13 @@ export class PrefixTree {
             let currentNode = node;
             while (currentNode.files.size === 0 && currentNode.children.size === 0) {
                 const parent = currentNode.parent;
-                if (!parent || parent === this.root) {
+                if (!parent) {
                     break;
                 }
                 parent.children.delete(currentNode.charValue);
+                if (parent === this.root) {
+                    break;
+                }
                 currentNode = parent;
             }
         }
@@ -505,6 +517,15 @@ export class LinkerCache {
     rebuildCache() {
         this.cache.clear();
         this.cache.updateTree();
+        this.activeFilePath = this.app.workspace.getActiveFile()?.path;
+    }
+
+    updateFiles(filePaths: string[]): void {
+        if (filePaths.length === 0) {
+            return;
+        }
+
+        this.cache.updateTree(filePaths);
         this.activeFilePath = this.app.workspace.getActiveFile()?.path;
     }
 

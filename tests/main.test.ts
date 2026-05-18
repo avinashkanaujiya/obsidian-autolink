@@ -8,6 +8,7 @@ import LinkerPlugin, {
     VIRTUAL_LINK_HOVER_DELAY_MS,
 } from 'main';
 import { TFile } from 'obsidian';
+import { LinkerCache } from '../linker/linkerCache';
 
 const BASE_SETTINGS: LinkerPluginSettings = {
     advancedSettings: false,
@@ -115,8 +116,8 @@ describe('normalizeFrontmatterTags', () => {
 });
 
 describe('LinkerPlugin.buildRealLink', () => {
-    it('builds a relative wikilink without a leading slash for same-folder files', () => {
-        const plugin = Object.create(LinkerPlugin.prototype) as {
+    function makePlugin() {
+        return Object.create(LinkerPlugin.prototype) as {
             app: {
                 metadataCache: {
                     fileToLinktext: (file: TFile, sourcePath: string) => string;
@@ -126,6 +127,10 @@ describe('LinkerPlugin.buildRealLink', () => {
             settings: LinkerPluginSettings;
             buildRealLink: (targetFile: TFile, sourceFilePath: string, displayText: string) => string;
         };
+    }
+
+    it('builds a relative wikilink without a leading slash for same-folder files', () => {
+        const plugin = makePlugin();
 
         plugin.app = {
             metadataCache: {
@@ -142,6 +147,94 @@ describe('LinkerPlugin.buildRealLink', () => {
 
         const targetFile = makeFile('Notes/Target.md');
         expect(plugin.buildRealLink(targetFile, 'Notes/Source.md', 'Shown text')).toBe('[[Target|Shown text]]');
+    });
+
+    it('respects markdown-link conversion when display text matches the shortest path', () => {
+        const plugin = makePlugin();
+        const targetFile = makeFile('Notes/Target.md');
+
+        plugin.app = {
+            metadataCache: {
+                fileToLinktext: () => 'Target',
+                getFirstLinkpathDest: () => targetFile,
+            },
+        };
+        plugin.settings = {
+            ...BASE_SETTINGS,
+            useDefaultLinkStyleForConversion: false,
+            useMarkdownLinks: true,
+            linkFormat: 'shortest',
+        };
+
+        expect(plugin.buildRealLink(targetFile, 'Notes/Source.md', 'Target')).toBe('[Target](Target)');
+    });
+});
+
+describe('LinkerPlugin.scheduleCacheRefresh', () => {
+    afterEach(() => {
+        jest.useRealTimers();
+        jest.restoreAllMocks();
+    });
+
+    function makePlugin() {
+        const plugin = Object.create(LinkerPlugin.prototype) as {
+            app: unknown;
+            settings: LinkerPluginSettings;
+            updateManager: { update: jest.Mock };
+            rerenderReadingViews: jest.Mock;
+            cacheRefreshTimer: ReturnType<typeof setTimeout> | null;
+            pendingCacheRefreshPaths: Set<string>;
+            forceFullCacheRefresh: boolean;
+            scheduleCacheRefresh: (filePaths?: string[]) => void;
+        };
+
+        plugin.app = {};
+        plugin.settings = { ...BASE_SETTINGS };
+        plugin.updateManager = { update: jest.fn() };
+        plugin.rerenderReadingViews = jest.fn();
+        plugin.cacheRefreshTimer = null;
+        plugin.pendingCacheRefreshPaths = new Set<string>();
+        plugin.forceFullCacheRefresh = false;
+        return plugin;
+    }
+
+    it('updates only the changed files when specific paths are provided', () => {
+        jest.useFakeTimers();
+
+        const plugin = makePlugin();
+        const rebuildCache = jest.fn();
+        const updateFiles = jest.fn();
+        jest.spyOn(LinkerCache, 'getInstance').mockReturnValue({
+            rebuildCache,
+            updateFiles,
+        } as unknown as LinkerCache);
+
+        plugin.scheduleCacheRefresh(['Notes/Alpha.md', 'Notes/Beta.md']);
+        jest.runOnlyPendingTimers();
+
+        expect(updateFiles).toHaveBeenCalledWith(['Notes/Alpha.md', 'Notes/Beta.md']);
+        expect(rebuildCache).not.toHaveBeenCalled();
+        expect(plugin.rerenderReadingViews).toHaveBeenCalled();
+        expect(plugin.updateManager.update).toHaveBeenCalled();
+    });
+
+    it('prefers a full rebuild when a later refresh request requires it', () => {
+        jest.useFakeTimers();
+
+        const plugin = makePlugin();
+        const rebuildCache = jest.fn();
+        const updateFiles = jest.fn();
+        jest.spyOn(LinkerCache, 'getInstance').mockReturnValue({
+            rebuildCache,
+            updateFiles,
+        } as unknown as LinkerCache);
+
+        plugin.scheduleCacheRefresh(['Notes/Alpha.md']);
+        plugin.scheduleCacheRefresh();
+        jest.runOnlyPendingTimers();
+
+        expect(rebuildCache).toHaveBeenCalledTimes(1);
+        expect(updateFiles).not.toHaveBeenCalled();
     });
 });
 
