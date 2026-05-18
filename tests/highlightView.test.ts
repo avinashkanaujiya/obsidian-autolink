@@ -163,3 +163,107 @@ describe('HighlightView.refresh', () => {
         );
     });
 });
+
+describe('HighlightView.navigateTo', () => {
+    const OriginalHTMLElement = globalThis.HTMLElement;
+
+    class FakeHTMLElement {
+        scrollIntoView = jest.fn();
+    }
+
+    beforeAll(() => {
+        Object.defineProperty(globalThis, 'HTMLElement', {
+            value: FakeHTMLElement,
+            configurable: true,
+        });
+    });
+
+    afterAll(() => {
+        if (OriginalHTMLElement) {
+            Object.defineProperty(globalThis, 'HTMLElement', {
+                value: OriginalHTMLElement,
+                configurable: true,
+            });
+        } else {
+            delete (globalThis as { HTMLElement?: typeof HTMLElement }).HTMLElement;
+        }
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    it('jumps preview mode near the source line, then scrolls the rendered mark by source-line metadata', () => {
+        jest.useFakeTimers();
+
+        const highlightView = new HighlightView({} as any, new HighlightService()) as any;
+        const setActiveLeaf = jest.fn();
+        highlightView.app = { workspace: { setActiveLeaf } };
+
+        const target = new FakeHTMLElement();
+        let rendered = false;
+
+        const view = {
+            getMode: jest.fn(() => 'preview'),
+            getEphemeralState: jest.fn(() => ({ scroll: 42 })),
+            setEphemeralState: jest.fn(() => {
+                rendered = true;
+            }),
+            contentEl: {
+                querySelector: jest.fn((selector: string) => {
+                    if (rendered && selector === 'mark.autolink-highlight[data-autolink-source-line="12"]') {
+                        return target;
+                    }
+                    return null;
+                }),
+                querySelectorAll: jest.fn(() => []),
+            },
+            leaf: {},
+        };
+
+        highlightView.navigateTo(view as any, {
+            index: 3,
+            line: 12,
+            ch: 5,
+            matchText: 'alpha',
+            rawLine: 'alpha row',
+        });
+
+        expect(view.setEphemeralState).toHaveBeenCalledWith({ scroll: 42, line: 12 });
+        expect(setActiveLeaf).toHaveBeenCalledWith(view.leaf, { focus: true });
+
+        jest.runOnlyPendingTimers();
+
+        expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    });
+
+    it('falls back to the nth rendered mark when source-line metadata is unavailable', () => {
+        const highlightView = new HighlightView({} as any, new HighlightService()) as any;
+        highlightView.app = { workspace: { setActiveLeaf: jest.fn() } };
+
+        const first = new FakeHTMLElement();
+        const target = new FakeHTMLElement();
+
+        const view = {
+            getMode: jest.fn(() => 'preview'),
+            getEphemeralState: jest.fn(() => ({})),
+            setEphemeralState: jest.fn(),
+            contentEl: {
+                querySelector: jest.fn(() => null),
+                querySelectorAll: jest.fn(() => [first, target]),
+            },
+            leaf: {},
+        };
+
+        highlightView.navigateTo(view as any, {
+            index: 1,
+            line: 8,
+            ch: 2,
+            matchText: 'beta',
+            rawLine: 'beta row',
+        });
+
+        expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+        expect(view.setEphemeralState).not.toHaveBeenCalled();
+    });
+});

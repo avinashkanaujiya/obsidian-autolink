@@ -27,6 +27,13 @@
     transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
 
+.virtual-link-default .virtual-link-a:hover,
+.virtual-link-default .virtual-link-open-all:hover {
+    color: inherit;
+    text-decoration-style: dashed;
+    text-decoration-color: color-mix(in srgb, currentColor 18%, transparent);
+}
+
 .virtual-link-default.virtual-link-hover-active .virtual-link-a,
 .virtual-link-default.virtual-link-hover-active .virtual-link-open-all {
     color: inherit;

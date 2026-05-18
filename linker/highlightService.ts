@@ -218,9 +218,10 @@ export function applyHighlightToDOM(
         regex.lastIndex = 0;
         while ((match = regex.exec(text)) !== null) {
             let shouldHighlight = false;
+            let sourceLine: number | null = null;
 
             if (mappedStart != null && sourceMapper) {
-                const sourceLine = sourceMapper.lineNumberAt(mappedStart + match.index);
+                sourceLine = sourceMapper.lineNumberAt(mappedStart + match.index);
                 if (!highlightedSourceLines.has(sourceLine)) {
                     highlightedSourceLines.add(sourceLine);
                     shouldHighlight = true;
@@ -243,6 +244,9 @@ export function applyHighlightToDOM(
 
             const mark = document.createElement('mark');
             mark.className = 'autolink-highlight';
+            if (sourceLine !== null) {
+                mark.dataset.autolinkSourceLine = String(sourceLine);
+            }
             mark.textContent = match[0];
             frag.appendChild(mark);
             if (!firstMark) firstMark = mark;

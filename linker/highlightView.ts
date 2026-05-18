@@ -4,7 +4,7 @@ import { findFirstMatch, HighlightService } from './highlightService';
 export const HIGHLIGHT_VIEW_TYPE = 'autolink-highlight-view';
 
 interface Occurrence {
-    index:     number;   // 0-based rank, used to find the nth <mark>
+    index:     number;   // 0-based rank, used as a fallback when source-line metadata is unavailable
     line:      number;   // 0-based line in the file
     ch:        number;   // 0-based column where the match starts
     matchText: string;   // exact matched text (preserves casing)
@@ -255,24 +255,81 @@ export class HighlightView extends ItemView {
     // -------------------------------------------------------------------------
     // Navigation
 
+    private findRenderedPreviewOccurrence(view: MarkdownView, occ: Occurrence): HTMLElement | null {
+        const previewRoot = (
+            (view.previewMode as { containerEl?: HTMLElement } | undefined)?.containerEl ??
+            view.contentEl
+        );
+
+        // Reading mode only renders some sections eagerly, so the global nth
+        // <mark> is not stable on long notes. Prefer the source-line metadata
+        // added by applyHighlightToDOM(); fall back to the old nth-mark lookup
+        // only when that metadata is unavailable.
+        const byLine = previewRoot.querySelector(
+            `mark.autolink-highlight[data-autolink-source-line="${occ.line}"]`
+        );
+        if (byLine instanceof HTMLElement) return byLine;
+
+        const marks = previewRoot.querySelectorAll('mark.autolink-highlight');
+        const byIndex = marks[occ.index];
+        return byIndex instanceof HTMLElement ? byIndex : null;
+    }
+
+    private queuePreviewOccurrenceScroll(
+        view: MarkdownView,
+        occ: Occurrence,
+        attempt = 0,
+        previewKickDone = false,
+    ): void {
+        const MAX_ATTEMPTS = 12;
+        const RETRY_MS = 120;
+
+        const target = this.findRenderedPreviewOccurrence(view, occ);
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        if (attempt >= MAX_ATTEMPTS) return;
+
+        let nextPreviewKickDone = previewKickDone;
+        if (view.getMode?.() === 'preview' && !previewKickDone) {
+            const previewStateView = view as MarkdownView & {
+                getEphemeralState?: () => Record<string, unknown> | null | undefined;
+                setEphemeralState?: (state: Record<string, unknown>) => void;
+            };
+            const currentState = previewStateView.getEphemeralState?.() ?? {};
+            previewStateView.setEphemeralState?.({
+                ...currentState,
+                line: occ.line,
+            });
+            nextPreviewKickDone = true;
+        }
+
+        setTimeout(() => {
+            this.queuePreviewOccurrenceScroll(view, occ, attempt + 1, nextPreviewKickDone);
+        }, attempt === 0 ? 60 : RETRY_MS);
+    }
+
     private navigateTo(view: MarkdownView, occ: Occurrence): void {
         const pos    = { line: occ.line, ch: occ.ch };
         const endPos = { line: occ.line, ch: occ.ch + occ.matchText.length };
 
         // ── Live preview / source: cursor-based (always works) ────────────────
-        const editor = view.editor;
-        if (editor) {
-            editor.setCursor(pos);
-            editor.scrollIntoView({ from: pos, to: endPos }, true);
+        if (view.getMode?.() !== 'preview') {
+            const editor = view.editor;
+            if (editor) {
+                editor.setCursor(pos);
+                editor.scrollIntoView({ from: pos, to: endPos }, true);
+            }
         }
 
-        // ── Reading mode: scroll to the nth <mark> DOM element ────────────────
-        setTimeout(() => {
-            const marks  = view.contentEl.querySelectorAll('mark.autolink-highlight');
-            const target = marks[occ.index];
-            if (target instanceof HTMLElement)
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 60);
+        // ── Reading mode: jump the preview near the source line, then poll for
+        // the actual rendered <mark>. This is more reliable for long notes and
+        // tables than assuming every highlighted mark is already in the DOM.
+        if (view.getMode?.() === 'preview') {
+            this.queuePreviewOccurrenceScroll(view, occ);
+        }
 
         // ── Bring the note leaf into focus LAST ───────────────────────────────
         // We do this after the scroll calls so the scroll is already queued
