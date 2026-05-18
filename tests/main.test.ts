@@ -5,6 +5,7 @@ import LinkerPlugin, {
     handleVirtualLinkHoverLeaveEvent,
     LinkerPluginSettings,
     normalizeFrontmatterTags,
+    registerInitialMetadataCacheRefresh,
     VIRTUAL_LINK_HOVER_DELAY_MS,
 } from 'main';
 import { TFile } from 'obsidian';
@@ -167,6 +168,46 @@ describe('LinkerPlugin.buildRealLink', () => {
         };
 
         expect(plugin.buildRealLink(targetFile, 'Notes/Source.md', 'Target')).toBe('[Target](Target)');
+    });
+});
+
+describe('registerInitialMetadataCacheRefresh', () => {
+    it('schedules a full refresh immediately when metadata is already initialized', () => {
+        const scheduleFullRefresh = jest.fn();
+        const registerEvent = jest.fn();
+        const metadataCache = {
+            initialized: true,
+            on: jest.fn((_name: 'resolved', callback: () => void) => callback),
+        };
+
+        registerInitialMetadataCacheRefresh(metadataCache, registerEvent, scheduleFullRefresh);
+
+        expect(metadataCache.on).toHaveBeenCalledWith('resolved', expect.any(Function));
+        expect(registerEvent).toHaveBeenCalledWith(expect.any(Function));
+        expect(scheduleFullRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits for the first resolved event when metadata is not initialized yet', () => {
+        const scheduleFullRefresh = jest.fn();
+        const registerEvent = jest.fn();
+        let resolvedCallback: (() => void) | undefined;
+        const metadataCache = {
+            initialized: false,
+            on: jest.fn((_name: 'resolved', callback: () => void) => {
+                resolvedCallback = callback;
+                return callback;
+            }),
+        };
+
+        registerInitialMetadataCacheRefresh(metadataCache, registerEvent, scheduleFullRefresh);
+
+        expect(scheduleFullRefresh).not.toHaveBeenCalled();
+        expect(resolvedCallback).toBeDefined();
+
+        resolvedCallback?.();
+        resolvedCallback?.();
+
+        expect(scheduleFullRefresh).toHaveBeenCalledTimes(1);
     });
 });
 

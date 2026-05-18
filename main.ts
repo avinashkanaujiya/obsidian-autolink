@@ -1,4 +1,4 @@
-import { App, EditorPosition, Keymap, MarkdownView, Menu, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { App, EditorPosition, EventRef, Keymap, MarkdownView, Menu, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 
 import { GlossaryLinker } from './linker/readModeLinker';
 import { liveLinkerPlugin } from './linker/liveLinker';
@@ -268,6 +268,35 @@ function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type MetadataCacheReadyAware = {
+    // Present at runtime in Obsidian, but missing from the published typings.
+    initialized?: boolean;
+    on(name: 'resolved', callback: () => any, ctx?: any): unknown;
+};
+
+export function registerInitialMetadataCacheRefresh(
+    metadataCache: MetadataCacheReadyAware,
+    registerEvent: (eventRef: EventRef) => void,
+    scheduleFullRefresh: () => void,
+): void {
+    let hasScheduledInitialRefresh = false;
+
+    const scheduleOnce = () => {
+        if (hasScheduledInitialRefresh) {
+            return;
+        }
+
+        hasScheduledInitialRefresh = true;
+        scheduleFullRefresh();
+    };
+
+    registerEvent(metadataCache.on('resolved', scheduleOnce) as EventRef);
+
+    if (metadataCache.initialized === true) {
+        scheduleOnce();
+    }
+}
+
 export function handleVirtualLinkHoverEnterEvent(e: MouseEvent): void {
     const hoverElement = resolveVirtualLinkHoverElement(e.target);
     if (!hoverElement) {
@@ -504,6 +533,12 @@ export default class LinkerPlugin extends Plugin {
                     this.scheduleCacheRefresh([file.path]);
                 }
             })
+        );
+
+        registerInitialMetadataCacheRefresh(
+            this.app.metadataCache as MetadataCacheReadyAware,
+            (eventRef) => this.registerEvent(eventRef),
+            () => this.scheduleCacheRefresh(),
         );
 
         this.addCommand({
