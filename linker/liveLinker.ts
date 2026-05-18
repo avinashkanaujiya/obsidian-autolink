@@ -10,7 +10,7 @@ import { matchesDirectorySetting } from './linkerInfo';
 import { VirtualMatch } from './virtualLinkDom';
 import { findFirstMatch, HighlightService } from './highlightService';
 
-function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth = 10) {
+function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth = Number.POSITIVE_INFINITY) {
     let node = child.parentNode;
     let depth = 0;
     while (node != null && depth < maxDepth) {
@@ -70,12 +70,20 @@ function addVirtualLinkSyntaxClassesFromNode(node: Node | null | undefined, clas
     }
 }
 
-function collectVirtualLinkSyntaxClasses(view: EditorView, from: number, to: number): string[] {
+function safeDomNodeAtPos(view: EditorView, pos: number): Node | null {
+    try {
+        return view.domAtPos(pos).node;
+    } catch {
+        return null;
+    }
+}
+
+export function collectVirtualLinkSyntaxClasses(view: EditorView, from: number, to: number): string[] {
     const classes = new Set<string>();
 
-    addVirtualLinkSyntaxClassesFromNode(view.domAtPos(from).node, classes);
+    addVirtualLinkSyntaxClassesFromNode(safeDomNodeAtPos(view, from), classes);
     if (to > from) {
-        addVirtualLinkSyntaxClassesFromNode(view.domAtPos(to - 1).node, classes);
+        addVirtualLinkSyntaxClassesFromNode(safeDomNodeAtPos(view, to - 1), classes);
     }
 
     return Array.from(classes);
@@ -96,6 +104,7 @@ class AutoLinkerPlugin implements PluginValue {
     private updateManager: ExternalUpdateManager;
     private updateCallback: () => void;
     private highlightUnsubscribe: (() => void) | null = null;
+    private readonly viewUpdateDomToFileMap = new Map<HTMLElement, TFile | null>();
 
     constructor(view: EditorView, app: App, settings: LinkerPluginSettings, updateManager: ExternalUpdateManager, highlightService: HighlightService | null = null) {
         this.app = app;
@@ -146,15 +155,30 @@ class AutoLinkerPlugin implements PluginValue {
     destroy() {
         this.updateManager.deregisterCallback(this.updateCallback);
         if (this.highlightUnsubscribe) this.highlightUnsubscribe();
+        this.viewUpdateDomToFileMap.clear();
     }
 
     private resolveSourceContext(view: EditorView): { sourceFile: TFile | null; viewIsActive: boolean } {
-        const markdownView = resolveMarkdownViewForEditorDOM(this.app, view.dom);
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        const markdownView = resolveMarkdownViewForEditorDOM(this.app, view.dom);
+        const cachedSourceFile = this.viewUpdateDomToFileMap.get(view.dom) ?? null;
+        const activeViewOwnsEditor = !!activeView?.contentEl && isDescendant(activeView.contentEl, view.dom);
+
+        const sourceFile = cachedSourceFile
+            ?? markdownView?.file
+            ?? (activeViewOwnsEditor ? activeView?.file ?? null : null);
+
+        if (sourceFile) {
+            this.viewUpdateDomToFileMap.set(view.dom, sourceFile);
+        }
+
+        const viewIsActive = markdownView !== null
+            ? markdownView === activeView
+            : !!(sourceFile && activeView?.file && activeViewOwnsEditor && sourceFile.path === activeView.file.path);
 
         return {
-            sourceFile: markdownView?.file ?? null,
-            viewIsActive: markdownView !== null && markdownView === activeView,
+            sourceFile,
+            viewIsActive,
         };
     }
 

@@ -357,6 +357,9 @@ export class PrefixTree {
         const currentVaultFiles = new Set<string>();
         let files = new Array<TFile>();
         const allFiles = this.app.vault.getMarkdownFiles();
+        const forcedUpdatePaths = new Set(
+            (updateFiles ?? []).filter((filePath): filePath is string => typeof filePath === 'string' && filePath.length > 0)
+        );
 
         allFiles.forEach((f) => currentVaultFiles.add(f.path));
 
@@ -372,7 +375,7 @@ export class PrefixTree {
 
         for (const file of files) {
             // Check if the file has been updated
-            if (this.fileIsUpToDate(file)) {
+            if (!forcedUpdatePaths.has(file.path) && this.fileIsUpToDate(file)) {
                 continue;
             }
 
@@ -524,6 +527,10 @@ export class LinkerCache {
         if (filePaths.length === 0) {
             return;
         }
+
+        filePaths.forEach((filePath) => {
+            this.cache.mapIndexedFilePathsToUpdateTime.delete(filePath);
+        });
 
         this.cache.updateTree(filePaths);
         this.activeFilePath = this.app.workspace.getActiveFile()?.path;

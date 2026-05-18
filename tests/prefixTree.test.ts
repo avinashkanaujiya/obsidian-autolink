@@ -42,13 +42,21 @@ const BASE_SETTINGS: LinkerPluginSettings = {
 
 function makeFile(filePath: string): TFile {
     const base = filePath.split('/').pop() ?? filePath;
-    return {
-        path: filePath,
-        basename: base.replace(/\.md$/, ''),
-        extension: 'md',
-        stat: { mtime: 1000, ctime: 1000, size: 0 },
-        parent: null,
-    } as unknown as TFile;
+    const file = Object.create(TFile.prototype) as TFile & {
+        path: string;
+        basename: string;
+        extension: string;
+        stat: { mtime: number; ctime: number; size: number };
+        parent: null;
+    };
+
+    file.path = filePath;
+    file.basename = base.replace(/\.md$/, '');
+    file.extension = 'md';
+    file.stat = { mtime: 1000, ctime: 1000, size: 0 };
+    file.parent = null;
+
+    return file;
 }
 
 type MockFileCache = {
@@ -288,6 +296,26 @@ describe('PrefixTree trie search', () => {
         const tree = new PrefixTree(app as unknown as App, BASE_SETTINGS);
         expect(findInText(tree, 'MacOS ')).toBe(true);
         expect(findInText(tree, 'macos ')).toBe(false);
+    });
+
+    it('reprocesses explicitly updated files even when their mtime is unchanged', () => {
+        const file = makeFile('Glossary/Plato.md');
+        const app = makeApp([file]);
+        app._setCache(file.path, {
+            frontmatter: null,
+            tags: null,
+        });
+
+        const tree = new PrefixTree(app as unknown as App, BASE_SETTINGS);
+        expect(findInText(tree, 'Philosopher ')).toBe(false);
+
+        app._setCache(file.path, {
+            frontmatter: { aliases: ['Philosopher'] },
+            tags: null,
+        });
+        tree.updateTree([file.path]);
+
+        expect(findInText(tree, 'Philosopher ')).toBe(true);
     });
 });
 
