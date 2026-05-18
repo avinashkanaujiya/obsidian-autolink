@@ -256,6 +256,15 @@ describe('VirtualMatch DOM rendering', () => {
         expect(root.children.some((child) => hasClass(child, 'multiple-files-references'))).toBe(true);
     });
 
+    it('adds open-all metadata to the primary link when multiple files match', () => {
+        const match = makeMatch(0, 0, 5, [makeFile('a.md'), makeFile('b.md'), makeFile('c.md')]);
+        const root = match.getCompleteLinkElement() as unknown as MockElement;
+        const primaryLink = root.children[0] as MockElement;
+
+        expect(primaryLink.classNames).toContain('virtual-link-a');
+        expect(primaryLink.getAttribute('data-open-all-paths')).toBe(JSON.stringify(['a.md', 'b.md', 'c.md']));
+    });
+
     it('applies extra syntax classes to the rendered root span', () => {
         const match = makeMatch(0, 0, 5, [makeFile('a.md')]);
         const root = match.getCompleteLinkElement(null, ['cm-highlight', 'cm-strikethrough']) as unknown as MockElement;

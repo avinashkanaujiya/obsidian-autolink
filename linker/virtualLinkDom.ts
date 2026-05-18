@@ -24,7 +24,11 @@ export class VirtualMatch {
     getCompleteLinkElement(highlightText: string | null = null, extraClasses: string[] = []) {
         const span = this.getLinkRootSpan(extraClasses);
         const firstPath = this.files.length > 0 ? this.files[0].path : '';
-        span.appendChild(this.getLinkAnchorElement(this.originText, firstPath, highlightText));
+        const primaryLink = this.getLinkAnchorElement(this.originText, firstPath, highlightText);
+        if (this.files.length > 1) {
+            primaryLink.setAttribute('data-open-all-paths', JSON.stringify(this.files.map((file) => file.path)));
+        }
+        span.appendChild(primaryLink);
         if (this.files.length > 1) {
             span.appendChild(this.getMultipleReferencesSpan());
         }

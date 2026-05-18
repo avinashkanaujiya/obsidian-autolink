@@ -381,6 +381,66 @@ describe('handleVirtualLinkClickEvent', () => {
         expect(event.stopPropagation).toHaveBeenCalled();
     });
 
+    it('opens all candidate files when clicking the primary link of a multi-candidate match', async () => {
+        jest.useFakeTimers();
+
+        try {
+            const app = {
+                workspace: {
+                    getActiveFile: () => makeFile('Notes/Source.md'),
+                    openLinkText: jest.fn(async () => undefined),
+                },
+            };
+            const highlightService = {
+                setPending: jest.fn(),
+            };
+
+            const anchor = {
+                getAttribute: (name: string) => {
+                    if (name === 'href') return 'Notes/First.md';
+                    if (name === 'origin-text') return 'Target';
+                    if (name === 'data-open-all-paths') {
+                        return JSON.stringify([
+                            'Notes/First.md',
+                            'Notes/Second.md',
+                            'Notes/Third.md',
+                        ]);
+                    }
+                    return null;
+                },
+            };
+
+            const event = {
+                button: 0,
+                target: {
+                    closest: (selector: string) => selector === '.virtual-link-a' ? anchor : null,
+                },
+                preventDefault: jest.fn(),
+                stopPropagation: jest.fn(),
+            } as unknown as MouseEvent;
+
+            const clickPromise = handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+
+            await Promise.resolve();
+
+            expect(highlightService.setPending).toHaveBeenNthCalledWith(1, 'Notes/First.md', 'Target');
+            expect(highlightService.setPending).toHaveBeenNthCalledWith(2, 'Notes/Second.md', 'Target');
+            expect(highlightService.setPending).toHaveBeenNthCalledWith(3, 'Notes/Third.md', 'Target');
+            expect(app.workspace.openLinkText).toHaveBeenNthCalledWith(1, 'Notes/First.md', 'Notes/Source.md', 'tab');
+
+            await jest.advanceTimersByTimeAsync(400);
+            await clickPromise;
+
+            expect(app.workspace.openLinkText).toHaveBeenNthCalledWith(2, 'Notes/Second.md', 'Notes/Source.md', 'tab');
+            expect(app.workspace.openLinkText).toHaveBeenNthCalledWith(3, 'Notes/Third.md', 'Notes/Source.md', 'tab');
+            expect(app.workspace.openLinkText).toHaveBeenCalledTimes(3);
+            expect(event.preventDefault).toHaveBeenCalled();
+            expect(event.stopPropagation).toHaveBeenCalled();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('falls back to the primary anchor when clicking the decorated widget around it', async () => {
         const app = {
             workspace: {
