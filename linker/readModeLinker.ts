@@ -32,7 +32,9 @@ export class GlossaryLinker extends MarkdownRenderChild {
             return;
         }
 
-        const tags = ['p', 'li', 'td', 'th', 'span', 'em', 'strong']; //"div"
+        // Include common inline formatting containers so virtual links still
+        // render inside highlighted and struck-through text in reading mode.
+        const tags = ['p', 'li', 'td', 'th', 'span', 'mark', 'em', 'strong', 'del', 's']; //"div"
         if (this.settings.includeHeaders) {
             tags.push('h1', 'h2', 'h3', 'h4', 'h5', 'h6');
         }

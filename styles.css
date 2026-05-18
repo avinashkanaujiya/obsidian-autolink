@@ -6,50 +6,24 @@
 
 /* ── Default virtual-link appearance ─────────────────────────────────────── */
 
-/* Inherit surrounding inline styling so virtual links don't override it. */
-.virtual-link-default {
-    color: inherit;
-}
+/*
+  Keep the default styling intentionally minimal:
+  - inherit surrounding text color instead of Obsidian's link color
+  - draw only a subtle underline-like rule
 
-.virtual-link-default:hover {
-    color: inherit;
-}
-
-/* The clickable anchor – blend into the text flow with a dashed underline. */
+  Using box-shadow here avoids interfering with surrounding markdown
+  decorations such as highlights and strikethrough.
+*/
 .virtual-link-default .virtual-link-a,
 .virtual-link-default .virtual-link-open-all {
-    color: inherit;
-    text-decoration: underline;
-    text-decoration-style: dashed;
-    text-decoration-thickness: 1px;
-    text-decoration-color: color-mix(in srgb, currentColor 18%, transparent);
-    text-underline-offset: 2px;
-    transition: color 0.15s ease, text-decoration-color 0.15s ease;
+    color: inherit !important;
+    text-decoration: none !important;
+    box-shadow: inset 0 -1px 0 0 currentColor;
 }
 
 .virtual-link-default .virtual-link-a:hover,
 .virtual-link-default .virtual-link-open-all:hover {
-    color: inherit;
-    text-decoration-style: dashed;
-    text-decoration-color: color-mix(in srgb, currentColor 18%, transparent);
-}
-
-.virtual-link-default.virtual-link-hover-active .virtual-link-a,
-.virtual-link-default.virtual-link-hover-active .virtual-link-open-all {
-    color: inherit;
-    text-decoration-style: solid;
-    text-decoration-color: currentColor;
-}
-
-/* The suffix icon (🔗 by default) – smaller and unobtrusive. */
-.virtual-link-default .linker-suffix-icon {
-    color: inherit;
-    font-size: 0.52em;
-    opacity: 0.55;
-    margin-left: 0.5px;
-    vertical-align: super;
-    line-height: 0;
-    user-select: none;
+    color: inherit !important;
 }
 
 /* ── Settings textarea ────────────────────────────────────────────────────── */
