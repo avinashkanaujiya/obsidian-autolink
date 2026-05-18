@@ -9,7 +9,7 @@
 /*
   Keep the default styling intentionally minimal:
   - inherit surrounding text color instead of Obsidian's link color
-  - draw only a subtle underline-like rule
+  - draw only a very faint underline-like rule
 
   Using box-shadow here avoids interfering with surrounding markdown
   decorations such as highlights and strikethrough.
@@ -18,7 +18,7 @@
 .virtual-link-default .virtual-link-open-all {
     color: inherit !important;
     text-decoration: none !important;
-    box-shadow: inset 0 -1px 0 0 currentColor;
+    box-shadow: inset 0 -1px 0 0 color-mix(in srgb, currentColor 10%, transparent);
 }
 
 .virtual-link-default .virtual-link-a:hover,

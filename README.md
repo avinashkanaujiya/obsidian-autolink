@@ -109,7 +109,7 @@ Any created virtual link will be appended with this suffix. This is useful to di
 By default, the suffix is "🔗".
 When a virtual link points to multiple candidate notes, the numbered chooser now includes an `oa` entry first, which opens all matched notes in sequence. Unless "Always show multiple references" is enabled, that chooser stays hidden until you hover the virtual link.
 
-By default (and if the default styling is toggled on in the settings), the links inherit the surrounding text styling and only add a minimal underline-like rule. This intentionally overrides Obsidian's default link color without fighting nearby Markdown styling such as highlights and strikethrough.
+By default (and if the default styling is toggled on in the settings), the links inherit the surrounding text styling and only add a very faint underline-like rule. This intentionally overrides Obsidian's default link color without fighting nearby Markdown styling such as highlights and strikethrough.
 The multi-candidate chooser still waits for a short hover delay before appearing, which avoids flicker when the pointer only passes over a link. Display-text highlights still use the current theme accent.
 You can turn off this default styling in the settings.
 
@@ -120,7 +120,7 @@ To apply custom styling to the links, you can add a CSS-snippet at `VaultFolder/
 .virtual-link .virtual-link-open-all {
     color: inherit !important;
     text-decoration: none !important;
-    box-shadow: inset 0 -1px 0 0 currentColor;
+    box-shadow: inset 0 -1px 0 0 color-mix(in srgb, currentColor 10%, transparent);
 }
 ```
 

@@ -255,6 +255,13 @@ describe('VirtualMatch DOM rendering', () => {
         expect(root.children.some((child) => hasClass(child, 'multiple-files-indicator'))).toBe(false);
         expect(root.children.some((child) => hasClass(child, 'multiple-files-references'))).toBe(true);
     });
+
+    it('applies extra syntax classes to the rendered root span', () => {
+        const match = makeMatch(0, 0, 5, [makeFile('a.md')]);
+        const root = match.getCompleteLinkElement(null, ['cm-highlight', 'cm-strikethrough']) as unknown as MockElement;
+
+        expect(root.classNames).toEqual(expect.arrayContaining(['cm-highlight', 'cm-strikethrough']));
+    });
 });
 
 describe('VirtualMatch.filterDuplicateLineMatches', () => {

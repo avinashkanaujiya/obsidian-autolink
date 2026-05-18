@@ -24,12 +24,44 @@ function isDescendant(parent: HTMLElement, child: HTMLElement, maxDepth = 10) {
 }
 
 export class VirtualLinkWidget extends WidgetType {
-    constructor(public match: VirtualMatch, public highlightText: string | null = null) {
+    constructor(
+        public match: VirtualMatch,
+        public highlightText: string | null = null,
+        public syntaxClasses: string[] = [],
+    ) {
         super();
     }
     toDOM(_view: EditorView): HTMLElement {
-        return this.match.getCompleteLinkElement(this.highlightText);
+        return this.match.getCompleteLinkElement(this.highlightText, this.syntaxClasses);
     }
+}
+
+const LIVE_PREVIEW_SYNTAX_CLASSES = ['cm-highlight', 'cm-strikethrough', 'cm-strong', 'cm-em'];
+
+function addVirtualLinkSyntaxClassesFromNode(node: Node | null | undefined, classes: Set<string>): void {
+    let current: Node | null | undefined = node;
+    while (current) {
+        const classList = (current as { classList?: DOMTokenList }).classList;
+        if (classList) {
+            LIVE_PREVIEW_SYNTAX_CLASSES.forEach((className) => {
+                if (classList.contains(className)) {
+                    classes.add(className);
+                }
+            });
+        }
+        current = current.parentNode;
+    }
+}
+
+function collectVirtualLinkSyntaxClasses(view: EditorView, from: number, to: number): string[] {
+    const classes = new Set<string>();
+
+    addVirtualLinkSyntaxClassesFromNode(view.domAtPos(from).node, classes);
+    if (to > from) {
+        addVirtualLinkSyntaxClassesFromNode(view.domAtPos(to - 1).node, classes);
+    }
+
+    return Array.from(classes);
 }
 
 class AutoLinkerPlugin implements PluginValue {
@@ -301,7 +333,7 @@ class AutoLinkerPlugin implements PluginValue {
                 ? (this.app.metadataCache.getFileCache(mappedFile)?.frontmatterPosition?.end.offset ?? -1)
                 : -1;
 
-            type WidgetAddition = { match: VirtualMatch; from: number; to: number };
+            type WidgetAddition = { match: VirtualMatch; from: number; to: number; syntaxClasses: string[] };
 
             const widgetAdditions: WidgetAddition[] = [];
 
@@ -345,7 +377,12 @@ class AutoLinkerPlugin implements PluginValue {
                 }
 
                 if (!cursorNearby && !needImeFix && !(excludeLine && additionIsInCurrentLine)) {
-                    widgetAdditions.push({ match: addition, from, to });
+                    widgetAdditions.push({
+                        match: addition,
+                        from,
+                        to,
+                        syntaxClasses: collectVirtualLinkSyntaxClasses(view, from, to),
+                    });
                 }
             });
 
@@ -420,6 +457,7 @@ class AutoLinkerPlugin implements PluginValue {
                         widget: new VirtualLinkWidget(
                             widgetAddition.match,
                             highlightedVirtualLinkTexts.get(key) ?? null,
+                            widgetAddition.syntaxClasses,
                         ),
                     }),
                 });

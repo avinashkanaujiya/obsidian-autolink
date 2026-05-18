@@ -21,8 +21,8 @@ export class VirtualMatch {
     // DOM methods
     /////////////////////////////////////////////////
 
-    getCompleteLinkElement(highlightText: string | null = null) {
-        const span = this.getLinkRootSpan();
+    getCompleteLinkElement(highlightText: string | null = null, extraClasses: string[] = []) {
+        const span = this.getLinkRootSpan(extraClasses);
         const firstPath = this.files.length > 0 ? this.files[0].path : '';
         span.appendChild(this.getLinkAnchorElement(this.originText, firstPath, highlightText));
         if (this.files.length > 1) {
@@ -82,9 +82,12 @@ export class VirtualMatch {
         return link;
     }
 
-    getLinkRootSpan() {
+    getLinkRootSpan(extraClasses: string[] = []) {
         const span = document.createElement('span');
         span.classList.add('glossary-entry', 'virtual-link', 'virtual-link-span');
+        if (extraClasses.length > 0) {
+            span.classList.add(...extraClasses);
+        }
         if (this.settings.applyDefaultLinkStyling) {
             span.classList.add('virtual-link-default');
         }
