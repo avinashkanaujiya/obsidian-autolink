@@ -13,9 +13,15 @@ import type { MarkdownSectionInformation } from 'obsidian';
  *   4. workspace 'layout-change' event fires → clearStale(openFilePaths)
  *      → removes highlights for notes that are no longer open
  */
+export interface ActiveHighlightEntry {
+    filePath: string;
+    searchText: string;
+    activatedAt: number;
+}
+
 export class HighlightService {
-    /** filePath → searchText currently active for that note */
-    private readonly activeHighlights = new Map<string, string>();
+    /** filePath → { searchText, activatedAt } currently active for that note */
+    private readonly activeHighlights = new Map<string, { searchText: string; activatedAt: number }>();
 
     /** Pending highlights waiting for their target files to open */
     private readonly pendingHighlights = new Map<string, string>();
@@ -39,16 +45,29 @@ export class HighlightService {
     activateForFile(filePath: string): string | undefined {
         const pendingSearchText = this.pendingHighlights.get(filePath);
         if (pendingSearchText !== undefined) {
-            this.activeHighlights.set(filePath, pendingSearchText);
+            this.activeHighlights.set(filePath, {
+                searchText: pendingSearchText,
+                activatedAt: Date.now(),
+            });
             this.pendingHighlights.delete(filePath);
             this.notifyUpdate();
         }
-        return this.activeHighlights.get(filePath);
+        return this.activeHighlights.get(filePath)?.searchText;
     }
 
     /** Returns the active search text for a file, or undefined if none. */
     getActive(filePath: string): string | undefined {
-        return this.activeHighlights.get(filePath);
+        return this.activeHighlights.get(filePath)?.searchText;
+    }
+
+    /** Returns all active highlights sorted by activation time (most recent first). */
+    getAllActive(): ActiveHighlightEntry[] {
+        const entries: ActiveHighlightEntry[] = [];
+        for (const [filePath, data] of this.activeHighlights) {
+            entries.push({ filePath, searchText: data.searchText, activatedAt: data.activatedAt });
+        }
+        entries.sort((a, b) => b.activatedAt - a.activatedAt);
+        return entries;
     }
 
     /**

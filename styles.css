@@ -194,3 +194,43 @@ mark.autolink-highlight:first-of-type {
     line-height: 1.6;
     white-space: pre-line;   /* honour \n in the message strings */
 }
+
+/* ── Multi-file grouped sidebar (aggregate highlights) ──────────────────── */
+
+.autolink-hl-file-group {
+    margin-bottom: 10px;
+}
+
+.autolink-hl-file-group:last-child {
+    margin-bottom: 0;
+}
+
+.autolink-hl-file-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 2px 4px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 4px;
+}
+
+.autolink-hl-filename {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Count badge inside a file header — no extra margin */
+.autolink-hl-file-header .autolink-hl-count {
+    flex-shrink: 0;
+    margin-bottom: 0;
+    font-size: 0.7em;
+    background: var(--background-modifier-border);
+    padding: 1px 6px;
+    border-radius: 8px;
+    color: var(--text-muted);
+}

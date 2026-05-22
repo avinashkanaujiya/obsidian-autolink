@@ -1,5 +1,5 @@
-import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
-import { findFirstMatch, HighlightService } from './highlightService';
+import { ItemView, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+import { ActiveHighlightEntry, findFirstMatch, HighlightService } from './highlightService';
 
 export const HIGHLIGHT_VIEW_TYPE = 'autolink-highlight-view';
 
@@ -11,13 +11,19 @@ interface Occurrence {
     rawLine:   string;   // full raw line for context display
 }
 
+interface FileGroup {
+    filePath:    string;
+    fileName:    string;
+    searchText:  string;
+    view:        MarkdownView | null;
+    occurrences: Occurrence[];
+}
+
 export class HighlightView extends ItemView {
     private unsubHighlight: (() => void) | null = null;
 
-    // Track what we last rendered to skip redundant re-renders (prevents flash
-    // when active-leaf-change fires while we are already showing the right data).
-    private renderedFilePath:   string | null = null;
-    private renderedSearchText: string | null = null;
+    // Hash of the last-rendered active-highlight set to skip redundant re-renders.
+    private renderedHash: string | null = null;
 
     constructor(leaf: WorkspaceLeaf, private readonly hs: HighlightService) {
         super(leaf);
@@ -32,8 +38,7 @@ export class HighlightView extends ItemView {
 
         this.unsubHighlight = this.hs.onUpdate(() => {
             // Force a full re-render when highlights change.
-            this.renderedFilePath = null;
-            this.renderedSearchText = null;
+            this.renderedHash = null;
             this.refresh();
         });
 
@@ -60,51 +65,89 @@ export class HighlightView extends ItemView {
     // Core refresh
 
     async refresh(): Promise<void> {
-        // ── Find the note the user is actually reading ───────────────────────
-        // IMPORTANT: do NOT use getActiveViewOfType(MarkdownView) — it returns
-        // null whenever this sidebar panel itself is the focused leaf. Instead,
-        // we resolve the most recently active Markdown leaf and only show
-        // highlights for that visible note.
-        const targetView = this.findCurrentVisibleMarkdownView();
-        const file = targetView?.file ?? null;
-        const searchText = file ? this.hs.getActive(file.path) : undefined;
+        const activeEntries = this.hs.getAllActive();
 
-        // ── Nothing to show ──────────────────────────────────────────────────
-        if (!targetView || !file || !searchText) {
-            this.renderedFilePath   = null;
-            this.renderedSearchText = null;
+        // ── Nothing to show ─────────────────────────────────────────────────
+        if (activeEntries.length === 0) {
+            this.renderedHash = null;
             this.contentEl.empty();
             this.renderEmpty('No active highlights.\nClick a virtual link to highlight text here.');
             return;
         }
 
-        // Skip re-render if we are already showing this file + search text.
-        if (file.path === this.renderedFilePath && searchText === this.renderedSearchText) {
+        const hash = this.computeHash(activeEntries);
+        if (hash === this.renderedHash) {
             return;
         }
 
-        this.renderedFilePath   = file.path;
-        this.renderedSearchText = searchText;
+        this.renderedHash = hash;
 
-        let content: string;
-        try {
-            content = await this.app.vault.cachedRead(file);
-        } catch {
-            this.contentEl.empty();
-            this.renderEmpty('Could not read file');
-            return;
+        // ── Build per-file occurrence groups ──────────────────────────────────
+        const groups: FileGroup[] = [];
+        for (const entry of activeEntries) {
+            const file = this.app.vault.getAbstractFileByPath(entry.filePath);
+            if (!(file instanceof TFile)) continue;
+
+            let content: string;
+            try {
+                content = await this.app.vault.cachedRead(file);
+            } catch {
+                continue;
+            }
+
+            const fileCache = this.app.metadataCache.getFileCache(file);
+            const fmEndLine = fileCache?.frontmatterPosition?.end.line ?? -1;
+            const startLine = fmEndLine >= 0 ? fmEndLine + 1 : 0;
+            const occurrences = this.findOccurrences(content, entry.searchText, startLine);
+
+            groups.push({
+                filePath: entry.filePath,
+                fileName: file.basename,
+                searchText: entry.searchText,
+                view: this.findMarkdownViewForFile(entry.filePath),
+                occurrences,
+            });
         }
-
-        const fileCache   = this.app.metadataCache.getFileCache(file);
-        // Skip frontmatter lines: matches there (e.g. aliases: tiger reserve)
-        // are metadata, not body content, and the Properties widget hides them
-        // in rendered view so scrolling there is disorienting.
-        const fmEndLine  = fileCache?.frontmatterPosition?.end.line ?? -1;
-        const startLine  = fmEndLine >= 0 ? fmEndLine + 1 : 0;
-        const occurrences = this.findOccurrences(content, searchText, startLine);
 
         this.contentEl.empty();
-        this.renderOccurrences(targetView, file.basename, searchText, occurrences);
+
+        if (groups.length === 0) {
+            this.renderEmpty('No occurrences found in active notes.');
+            return;
+        }
+
+        // ── Global header (search term) ──────────────────────────────────────
+        // If every group shares the same search text, show it once at the top.
+        const allSameSearch = groups.every(g => g.searchText === groups[0].searchText);
+        if (allSameSearch) {
+            const hdr = this.contentEl.createDiv({ cls: 'autolink-hl-header' });
+            hdr.createEl('div', { cls: 'autolink-hl-term' }).setText(`"${groups[0].searchText}"`);
+        }
+
+        // ── Render each file group ───────────────────────────────────────────
+        for (const group of groups) {
+            this.renderFileGroup(group);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Hash & helpers
+
+    private computeHash(entries: ActiveHighlightEntry[]): string {
+        // Stable hash: sort by filePath so order doesn't depend on activation time.
+        const sorted = [...entries].sort((a, b) => a.filePath.localeCompare(b.filePath));
+        return JSON.stringify(sorted.map(e => [e.filePath, e.searchText]));
+    }
+
+    private findMarkdownViewForFile(filePath: string): MarkdownView | null {
+        const leaves = this.app.workspace.getLeavesOfType('markdown');
+        for (const leaf of leaves) {
+            const view = leaf.view;
+            if (view instanceof MarkdownView && view.file?.path === filePath) {
+                return view;
+            }
+        }
+        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -131,70 +174,33 @@ export class HighlightView extends ItemView {
     }
 
     // -------------------------------------------------------------------------
-    // Finding the currently visible note
-
-    /**
-     * Returns the Markdown view whose contents are currently visible to the
-     * user, even if this sidebar view has focus.
-     *
-     * We prefer getMostRecentLeaf() because it tracks the note pane the user
-     * was just reading while a sidebar leaf is active. If that is unavailable,
-     * we fall back to getActiveFile() and locate the matching Markdown leaf.
-     */
-    private findCurrentVisibleMarkdownView(): MarkdownView | null {
-        const recentLeaf = this.app.workspace.getMostRecentLeaf?.();
-        const recentView = recentLeaf?.view;
-        if (recentView instanceof MarkdownView && recentView.file) {
-            return recentView;
-        }
-
-        const activeFile = this.app.workspace.getActiveFile?.();
-        if (!activeFile) return null;
-
-        const leaves = this.app.workspace.getLeavesOfType('markdown');
-        for (const leaf of leaves) {
-            const view = leaf.view;
-            if (view instanceof MarkdownView && view.file?.path === activeFile.path) {
-                return view;
-            }
-        }
-
-        return null;
-    }
-
-    // -------------------------------------------------------------------------
     // Rendering
 
     private renderEmpty(msg: string): void {
         this.contentEl.createDiv({ cls: 'autolink-hl-empty' }).setText(msg);
     }
 
-    private renderOccurrences(
-        view: MarkdownView,
-        fileName: string,
-        searchText: string,
-        occurrences: Occurrence[],
-    ): void {
+    private renderFileGroup(group: FileGroup): void {
         const root = this.contentEl;
 
-        // Header
-        const hdr = root.createDiv({ cls: 'autolink-hl-header' });
-        hdr.createEl('div', { cls: 'autolink-hl-term' }).setText(`"${searchText}"`);
-        hdr.createEl('div', { cls: 'autolink-hl-subtitle' }).setText(fileName);
+        const groupEl = root.createDiv({ cls: 'autolink-hl-file-group' });
 
-        if (occurrences.length === 0) {
-            root.createDiv({ cls: 'autolink-hl-empty' })
+        // File header
+        const hdr = groupEl.createDiv({ cls: 'autolink-hl-file-header' });
+        hdr.createEl('span', { cls: 'autolink-hl-filename' }).setText(group.fileName);
+        hdr.createEl('span', { cls: 'autolink-hl-count' }).setText(
+            `${group.occurrences.length}`
+        );
+
+        if (group.occurrences.length === 0) {
+            groupEl.createDiv({ cls: 'autolink-hl-empty' })
                 .setText('No occurrences found in note body');
             return;
         }
 
-        root.createEl('div', { cls: 'autolink-hl-count' }).setText(
-            `${occurrences.length} occurrence${occurrences.length === 1 ? '' : 's'}`
-        );
+        const list = groupEl.createDiv({ cls: 'autolink-hl-list' });
 
-        const list = root.createDiv({ cls: 'autolink-hl-list' });
-
-        for (const occ of occurrences) {
+        for (const occ of group.occurrences) {
             const item = list.createDiv({ cls: 'autolink-hl-item' });
             item.setAttribute('title', `Jump to line ${occ.line + 1}`);
 
@@ -206,7 +212,12 @@ export class HighlightView extends ItemView {
                 occ.rawLine, occ.ch, occ.matchText,
             );
 
-            item.addEventListener('click', () => this.navigateTo(view, occ));
+            item.addEventListener('click', () => {
+                const view = group.view ?? this.findMarkdownViewForFile(group.filePath);
+                if (view) {
+                    this.navigateTo(view, occ);
+                }
+            });
         }
     }
 
@@ -334,9 +345,8 @@ export class HighlightView extends ItemView {
         // ── Bring the note leaf into focus LAST ───────────────────────────────
         // We do this after the scroll calls so the scroll is already queued
         // before focus triggers active-leaf-change → refresh.
-        // Because refresh() now resolves the most recently active Markdown
-        // leaf (instead of the focused sidebar leaf), bringing this leaf into
-        // focus no longer clears the sidebar list.
+        // Because refresh() now renders all active highlights, bringing this
+        // leaf into focus does not clear the sidebar list.
         this.app.workspace.setActiveLeaf(view.leaf, { focus: true });
     }
 }
