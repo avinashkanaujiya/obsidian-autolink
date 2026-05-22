@@ -1,5 +1,5 @@
 import { MarkdownView, TFile } from 'obsidian';
-import { HighlightService } from '../linker/highlightService';
+import { ActiveHighlightEntry, HighlightService } from '../linker/highlightService';
 import { HighlightView } from '../linker/highlightView';
 
 function activateHighlight(hs: HighlightService, filePath: string, searchText: string): void {
@@ -8,14 +8,14 @@ function activateHighlight(hs: HighlightService, filePath: string, searchText: s
 }
 
 function makeMarkdownFile(path: string): TFile {
+    const file = Object.create(TFile.prototype) as TFile;
     const base = path.split('/').pop() ?? path;
-    return {
-        path,
-        basename: base.replace(/\.md$/, ''),
-        extension: 'md',
-        stat: { mtime: 1000, ctime: 1000, size: 0 },
-        parent: null,
-    } as unknown as TFile;
+    file.path = path;
+    file.basename = base.replace(/\.md$/, '');
+    file.extension = 'md';
+    file.stat = { mtime: 1000, ctime: 1000, size: 0 };
+    file.parent = null;
+    return file;
 }
 
 function makeMarkdownView(path: string): MarkdownView & { file: TFile } {
@@ -33,12 +33,29 @@ function makeHighlightView(params: {
     recentView?: (MarkdownView & { file: TFile }) | null;
     activeFile?: TFile | null;
     leaves: Array<MarkdownView & { file: TFile }>;
+    fileContents?: Record<string, string>;
 }) {
     const view = new HighlightView({} as any, params.hs) as any;
 
-    view.contentEl = { empty: jest.fn() };
-    view.renderOccurrences = jest.fn();
+    view.contentEl = {
+        empty: jest.fn(),
+        createDiv: jest.fn(() => ({
+            createEl: jest.fn(() => ({ setText: jest.fn() })),
+            setText: jest.fn(),
+        })),
+        createEl: jest.fn(() => ({ setText: jest.fn() })),
+    };
+    view.renderFileGroup = jest.fn();
     view.renderEmpty = jest.fn();
+
+    const filesByPath = new Map<string, TFile>();
+    for (const leafView of params.leaves) {
+        filesByPath.set(leafView.file.path, leafView.file);
+    }
+    if (params.activeFile) {
+        filesByPath.set(params.activeFile.path, params.activeFile);
+    }
+
     view.app = {
         workspace: {
             getMostRecentLeaf: jest.fn(() => (params.recentView ? { view: params.recentView } : null)),
@@ -46,7 +63,13 @@ function makeHighlightView(params: {
             getLeavesOfType: jest.fn(() => params.leaves.map((leafView) => ({ view: leafView }))),
         },
         vault: {
-            cachedRead: jest.fn(async () => 'alpha\nsecond\nbeta'),
+            cachedRead: jest.fn(async (file: TFile) => {
+                if (params.fileContents && file.path in params.fileContents) {
+                    return params.fileContents[file.path];
+                }
+                return 'alpha\nsecond\nbeta';
+            }),
+            getAbstractFileByPath: jest.fn((path: string) => filesByPath.get(path) ?? null),
         },
         metadataCache: {
             getFileCache: jest.fn(() => null),
@@ -93,7 +116,7 @@ describe('HighlightView.findOccurrences', () => {
 });
 
 describe('HighlightView.refresh', () => {
-    it('renders highlights for the currently visible note, not the first open highlighted note', async () => {
+    it('renders all active highlight groups when multiple files are highlighted', async () => {
         const hs = new HighlightService();
         activateHighlight(hs, 'Notes/First.md', 'alpha');
         activateHighlight(hs, 'Notes/Second.md', 'beta');
@@ -108,17 +131,54 @@ describe('HighlightView.refresh', () => {
 
         await highlightView.refresh();
 
-        expect(highlightView.app.vault.cachedRead).toHaveBeenCalledWith(secondView.file);
-        expect(highlightView.renderOccurrences).toHaveBeenCalledWith(
-            secondView,
-            'Second',
-            'beta',
-            expect.any(Array)
-        );
         expect(highlightView.renderEmpty).not.toHaveBeenCalled();
+        expect(highlightView.renderFileGroup).toHaveBeenCalledTimes(2);
+
+        const calls = highlightView.renderFileGroup.mock.calls as Array<[any]>;
+        const basenames = calls.map((c) => c[0].fileName);
+        expect(basenames).toContain('First');
+        expect(basenames).toContain('Second');
     });
 
-    it('shows an empty state when the visible note has no active highlight', async () => {
+    it('shows an empty state when no highlights are active', async () => {
+        const hs = new HighlightService();
+
+        const firstView = makeMarkdownView('Notes/First.md');
+        const highlightView = makeHighlightView({
+            hs,
+            recentView: firstView,
+            leaves: [firstView],
+        });
+
+        await highlightView.refresh();
+
+        expect(highlightView.app.vault.cachedRead).not.toHaveBeenCalled();
+        expect(highlightView.renderFileGroup).not.toHaveBeenCalled();
+        expect(highlightView.renderEmpty).toHaveBeenCalledWith(
+            'No active highlights.\nClick a virtual link to highlight text here.'
+        );
+    });
+
+    it('skips re-render when the active highlight set has not changed', async () => {
+        const hs = new HighlightService();
+        activateHighlight(hs, 'Notes/First.md', 'alpha');
+
+        const firstView = makeMarkdownView('Notes/First.md');
+        const highlightView = makeHighlightView({
+            hs,
+            recentView: firstView,
+            leaves: [firstView],
+        });
+
+        await highlightView.refresh();
+        expect(highlightView.renderFileGroup).toHaveBeenCalledTimes(1);
+
+        // Second call with identical state should skip render
+        await highlightView.refresh();
+        expect(highlightView.renderFileGroup).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-renders when a new highlight is activated', async () => {
         const hs = new HighlightService();
         activateHighlight(hs, 'Notes/First.md', 'alpha');
 
@@ -126,41 +186,69 @@ describe('HighlightView.refresh', () => {
         const secondView = makeMarkdownView('Notes/Second.md');
         const highlightView = makeHighlightView({
             hs,
-            recentView: secondView,
+            recentView: firstView,
             leaves: [firstView, secondView],
         });
 
         await highlightView.refresh();
+        expect(highlightView.renderFileGroup).toHaveBeenCalledTimes(1);
 
-        expect(highlightView.app.vault.cachedRead).not.toHaveBeenCalled();
-        expect(highlightView.renderOccurrences).not.toHaveBeenCalled();
-        expect(highlightView.renderEmpty).toHaveBeenCalledWith(
-            'No active highlights.\nClick a virtual link to highlight text here.'
-        );
+        // Activate a second file — hash changes, so it should re-render
+        activateHighlight(hs, 'Notes/Second.md', 'beta');
+        await highlightView.refresh();
+        expect(highlightView.renderFileGroup).toHaveBeenCalledTimes(3); // 1st + 2 files
     });
 
-    it('falls back to the active file when the recent markdown leaf is unavailable', async () => {
+    it('clears a file group when its highlight is removed via clearStale', async () => {
         const hs = new HighlightService();
-        activateHighlight(hs, 'Notes/Fallback.md', 'second');
+        activateHighlight(hs, 'Notes/First.md', 'alpha');
+        activateHighlight(hs, 'Notes/Second.md', 'beta');
 
-        const otherView = makeMarkdownView('Notes/Other.md');
-        const fallbackView = makeMarkdownView('Notes/Fallback.md');
+        const firstView = makeMarkdownView('Notes/First.md');
+        const secondView = makeMarkdownView('Notes/Second.md');
         const highlightView = makeHighlightView({
             hs,
-            recentView: null,
-            activeFile: fallbackView.file,
-            leaves: [otherView, fallbackView],
+            recentView: firstView,
+            leaves: [firstView, secondView],
         });
 
         await highlightView.refresh();
+        expect(highlightView.renderFileGroup).toHaveBeenCalledTimes(2);
 
-        expect(highlightView.app.vault.cachedRead).toHaveBeenCalledWith(fallbackView.file);
-        expect(highlightView.renderOccurrences).toHaveBeenCalledWith(
-            fallbackView,
-            'Fallback',
-            'second',
-            expect.any(Array)
-        );
+        // Simulate closing the second file
+        hs.clearStale(new Set(['Notes/First.md']));
+        await highlightView.refresh();
+        expect(highlightView.renderFileGroup).toHaveBeenCalledTimes(3); // 2 + 1 remaining
+    });
+});
+
+describe('HighlightView.computeHash', () => {
+    it('produces the same hash regardless of entry order', () => {
+        const view = new HighlightView({} as any, new HighlightService()) as any;
+
+        const entriesA: ActiveHighlightEntry[] = [
+            { filePath: 'A.md', searchText: 'alpha', activatedAt: 100 },
+            { filePath: 'B.md', searchText: 'beta', activatedAt: 200 },
+        ];
+        const entriesB: ActiveHighlightEntry[] = [
+            { filePath: 'B.md', searchText: 'beta', activatedAt: 200 },
+            { filePath: 'A.md', searchText: 'alpha', activatedAt: 100 },
+        ];
+
+        expect(view.computeHash(entriesA)).toBe(view.computeHash(entriesB));
+    });
+
+    it('produces a different hash when search text changes', () => {
+        const view = new HighlightView({} as any, new HighlightService()) as any;
+
+        const entriesA: ActiveHighlightEntry[] = [
+            { filePath: 'A.md', searchText: 'alpha', activatedAt: 100 },
+        ];
+        const entriesB: ActiveHighlightEntry[] = [
+            { filePath: 'A.md', searchText: 'beta', activatedAt: 100 },
+        ];
+
+        expect(view.computeHash(entriesA)).not.toBe(view.computeHash(entriesB));
     });
 });
 

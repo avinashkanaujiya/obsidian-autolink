@@ -26,3 +26,4 @@
 - [x] 4.3 Test switching focus between highlighted files: sidebar remains stable (no flash/rebuild)
 - [x] 4.4 Test single-candidate fallback: behavior matches original single-file view
 - [x] 4.5 Close a highlighted file: its group disappears from the sidebar within one `layout-change` cycle
+- [x] 4.6 Add automated tests: `getAllActive()` sort order, `activatedAt` timestamps, multi-file refresh, hash deduplication, `clearStale` cleanup
