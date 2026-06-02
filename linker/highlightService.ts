@@ -85,6 +85,15 @@ export class HighlightService {
         if (changed) this.notifyUpdate();
     }
 
+    /** Remove a specific active highlight for a file/term pair. */
+    removeActive(filePath: string, searchText: string): void {
+        const entry = this.activeHighlights.get(filePath);
+        if (entry && entry.searchText === searchText) {
+            this.activeHighlights.delete(filePath);
+            this.notifyUpdate();
+        }
+    }
+
     /** Subscribe to active-highlight changes (returns an unsubscribe fn). */
     onUpdate(cb: () => void): () => void {
         this.updateCallbacks.add(cb);

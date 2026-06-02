@@ -1,5 +1,8 @@
 import { ItemView, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+import { LinkerPluginSettings } from 'main';
 import { ActiveHighlightEntry, findFirstMatch, HighlightService } from './highlightService';
+import { ExternalUpdateManager } from './linkerCache';
+import { removeTermFromFrontmatter } from './frontmatterUtils';
 
 export const HIGHLIGHT_VIEW_TYPE = 'autolink-highlight-view';
 
@@ -25,7 +28,12 @@ export class HighlightView extends ItemView {
     // Hash of the last-rendered active-highlight set to skip redundant re-renders.
     private renderedHash: string | null = null;
 
-    constructor(leaf: WorkspaceLeaf, private readonly hs: HighlightService) {
+    constructor(
+        leaf: WorkspaceLeaf,
+        private readonly hs: HighlightService,
+        private readonly settings: LinkerPluginSettings,
+        private readonly updateManager: ExternalUpdateManager,
+    ) {
         super(leaf);
     }
 
@@ -204,6 +212,16 @@ export class HighlightView extends ItemView {
             const item = list.createDiv({ cls: 'autolink-hl-item' });
             item.setAttribute('title', `Jump to line ${occ.line + 1}`);
 
+            // Dismiss button — removes the search term from this note's frontmatter
+            const dismissBtn = item.createEl('button', { cls: 'autolink-hl-dismiss' });
+            dismissBtn.textContent = '×';
+            dismissBtn.setAttribute('aria-label', 'Remove from frontmatter');
+            dismissBtn.setAttribute('title', 'Remove from frontmatter');
+            dismissBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                void this.handleDismiss(group.filePath, group.searchText, group.fileName);
+            });
+
             item.createEl('span', { cls: 'autolink-hl-lineno' })
                 .setText(`L${occ.line + 1}`);
 
@@ -220,6 +238,27 @@ export class HighlightView extends ItemView {
             });
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Dismiss action
+
+    private async handleDismiss(filePath: string, term: string, fileName: string): Promise<void> {
+        const modified = await removeTermFromFrontmatter(
+            this.app,
+            this.settings,
+            this.updateManager,
+            filePath,
+            term,
+        );
+
+        if (modified) {
+            // Remove the highlight entry so the view re-renders without this file
+            this.hs.removeActive(filePath, term);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Context line rendering
 
     /** Render a windowed snippet centred on the chosen match, highlighting it once. */
     private renderContextLine(

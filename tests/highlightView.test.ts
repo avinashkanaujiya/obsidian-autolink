@@ -35,7 +35,7 @@ function makeHighlightView(params: {
     leaves: Array<MarkdownView & { file: TFile }>;
     fileContents?: Record<string, string>;
 }) {
-    const view = new HighlightView({} as any, params.hs) as any;
+    const view = new HighlightView({} as any, params.hs, {} as any, { update: jest.fn() } as any) as any;
 
     view.contentEl = {
         empty: jest.fn(),
@@ -81,7 +81,7 @@ function makeHighlightView(params: {
 
 describe('HighlightView.findOccurrences', () => {
     it('keeps only the first occurrence per line', () => {
-        const view = new HighlightView({} as any, new HighlightService()) as any;
+        const view = new HighlightView({} as any, new HighlightService(), {} as any, { update: jest.fn() } as any) as any;
 
         const occurrences = view.findOccurrences(
             'alpha alpha\nbeta alpha alpha\nno match here\nALPHA again',
@@ -224,7 +224,7 @@ describe('HighlightView.refresh', () => {
 
 describe('HighlightView.computeHash', () => {
     it('produces the same hash regardless of entry order', () => {
-        const view = new HighlightView({} as any, new HighlightService()) as any;
+        const view = new HighlightView({} as any, new HighlightService(), {} as any, { update: jest.fn() } as any) as any;
 
         const entriesA: ActiveHighlightEntry[] = [
             { filePath: 'A.md', searchText: 'alpha', activatedAt: 100 },
@@ -239,7 +239,7 @@ describe('HighlightView.computeHash', () => {
     });
 
     it('produces a different hash when search text changes', () => {
-        const view = new HighlightView({} as any, new HighlightService()) as any;
+        const view = new HighlightView({} as any, new HighlightService(), {} as any, { update: jest.fn() } as any) as any;
 
         const entriesA: ActiveHighlightEntry[] = [
             { filePath: 'A.md', searchText: 'alpha', activatedAt: 100 },
@@ -284,7 +284,7 @@ describe('HighlightView.navigateTo', () => {
     it('jumps preview mode near the source line, then scrolls the rendered mark by source-line metadata', () => {
         jest.useFakeTimers();
 
-        const highlightView = new HighlightView({} as any, new HighlightService()) as any;
+        const highlightView = new HighlightView({} as any, new HighlightService(), {} as any, { update: jest.fn() } as any) as any;
         const setActiveLeaf = jest.fn();
         highlightView.app = { workspace: { setActiveLeaf } };
 
@@ -326,7 +326,7 @@ describe('HighlightView.navigateTo', () => {
     });
 
     it('falls back to the nth rendered mark when source-line metadata is unavailable', () => {
-        const highlightView = new HighlightView({} as any, new HighlightService()) as any;
+        const highlightView = new HighlightView({} as any, new HighlightService(), {} as any, { update: jest.fn() } as any) as any;
         highlightView.app = { workspace: { setActiveLeaf: jest.fn() } };
 
         const first = new FakeHTMLElement();

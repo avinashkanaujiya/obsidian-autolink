@@ -234,3 +234,38 @@ mark.autolink-highlight:first-of-type {
     border-radius: 8px;
     color: var(--text-muted);
 }
+
+/* ── Dismiss button (×) on highlight occurrence rows ─────────────────────── */
+
+.autolink-hl-dismiss {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-faint);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.autolink-hl-item:hover .autolink-hl-dismiss {
+    opacity: 1;
+}
+
+.autolink-hl-dismiss:hover {
+    background: var(--background-modifier-error);
+    color: var(--text-error);
+}
+
+.autolink-hl-dismiss:active {
+    background: var(--background-modifier-error-hover);
+}

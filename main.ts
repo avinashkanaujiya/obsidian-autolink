@@ -407,7 +407,7 @@ export default class LinkerPlugin extends Plugin {
         // Register the right-sidebar highlights panel
         this.registerView(
             HIGHLIGHT_VIEW_TYPE,
-            (leaf) => new HighlightView(leaf, this.highlightService)
+            (leaf) => new HighlightView(leaf, this.highlightService, this.settings, this.updateManager)
         );
 
         // This adds a settings tab so the user can configure various aspects of the plugin

@@ -137,3 +137,42 @@ describe('HighlightService.activateForFile', () => {
         expect(service.getAllActive()[0].activatedAt).toBe(firstActivatedAt);
     });
 });
+
+describe('HighlightService.removeActive', () => {
+    it('removes the active highlight for a specific file/term pair', () => {
+        const service = new HighlightService();
+        service.setPending('Notes/First.md', 'Plato');
+        service.setPending('Notes/Second.md', 'Aristotle');
+        service.activateForFile('Notes/First.md');
+        service.activateForFile('Notes/Second.md');
+
+        expect(service.getAllActive()).toHaveLength(2);
+
+        service.removeActive('Notes/First.md', 'Plato');
+
+        const remaining = service.getAllActive();
+        expect(remaining).toHaveLength(1);
+        expect(remaining[0].filePath).toBe('Notes/Second.md');
+        expect(remaining[0].searchText).toBe('Aristotle');
+    });
+
+    it('does nothing if the term does not match', () => {
+        const service = new HighlightService();
+        service.setPending('Notes/First.md', 'Plato');
+        service.activateForFile('Notes/First.md');
+
+        service.removeActive('Notes/First.md', 'Aristotle');
+
+        expect(service.getAllActive()).toHaveLength(1);
+    });
+
+    it('does nothing if the file has no active highlight', () => {
+        const service = new HighlightService();
+        service.setPending('Notes/First.md', 'Plato');
+        service.activateForFile('Notes/First.md');
+
+        service.removeActive('Notes/Second.md', 'Plato');
+
+        expect(service.getAllActive()).toHaveLength(1);
+    });
+});
