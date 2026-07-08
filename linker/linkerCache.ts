@@ -1,7 +1,7 @@
 import { App, getAllTags, TFile, Vault } from 'obsidian';
 
 import { LinkerPluginSettings } from 'main';
-import { LinkerMetaInfoFetcher } from './linkerInfo';
+import { LinkerMetaInfoFetcher, LinkerFileMetaInfo } from './linkerInfo';
 
 export class ExternalUpdateManager {
     private registeredCallbacks: Set<() => void> = new Set();
@@ -70,6 +70,16 @@ export class PrefixTree {
     mapIndexedFilePathsToUpdateTime: Map<string, number> = new Map();
     mapFilePathToLeaveNodes: Map<string, PrefixNode[]> = new Map();
 
+    // ponytail: single dirty flag over per-file tracking — catches the vast
+    // majority of unnecessary rerenders with one bool.
+    dirty = false;
+
+    // ponytail: fingerprint linking-relevant metadata per file so frontmatter
+    // edits that don't change terms (e.g., highlight annotations) skip tree
+    // mutation entirely.  String key = stable hash of basename + aliases +
+    // custom fields + case-sensitivity tags + inclusion flags.
+    linkingFingerprints: Map<string, string> = new Map();
+
     constructor(public app: App, public settings: LinkerPluginSettings) {
         this.fetcher = new LinkerMetaInfoFetcher(this.app, this.settings);
         this.updateTree();
@@ -81,6 +91,8 @@ export class PrefixTree {
         this.setIndexedFilePaths.clear();
         this.mapIndexedFilePathsToUpdateTime.clear();
         this.mapFilePathToLeaveNodes.clear();
+        this.dirty = false;
+        this.linkingFingerprints.clear();
     }
 
     getCurrentMatchNodes(index: number, excludedNote?: TFile | string | null): MatchNode[] {
@@ -201,6 +213,16 @@ export class PrefixTree {
             return;
         }
 
+        // Compute fingerprint of linking-relevant metadata before any mutation.
+        // Skip if unchanged — a non-linking frontmatter edit (e.g., highlight
+        // annotation) changed the mtime but not the terms we care about.
+        const metaInfo = this.fetcher.getMetaInfo(file);
+        const metadata = this.app.metadataCache.getFileCache(file);
+        const fingerprint = this.computeLinkingFingerprint(file, metaInfo, metadata);
+        if (this.linkingFingerprints.get(path) === fingerprint) {
+            return;
+        }
+
         // Remove the old nodes of the file
         this.removeFileFromTree(file);
 
@@ -208,12 +230,9 @@ export class PrefixTree {
         this.setIndexedFilePaths.add(path);
         this.mapIndexedFilePathsToUpdateTime.set(path, file.stat.mtime);
 
-        // Get the virtual linker related metadata of the file
-        const metaInfo = this.fetcher.getMetaInfo(file);
-
         // Get the tags of the file
         // and normalize them by removing the # in front of tags
-        const fileCache = this.app.metadataCache.getFileCache(file);
+        const fileCache = metadata;
         const tags = (fileCache ? getAllTags(fileCache) ?? [] : [])
             .filter(PrefixTree.isNoneEmptyString)
             .map((tag) => (tag.startsWith('#') ? tag.slice(1) : tag));
@@ -225,15 +244,16 @@ export class PrefixTree {
         const isInExcludedDir = metaInfo.isInExcludedDir;
 
         if (excludeFile || (isInExcludedDir && !includeFile)) {
+            this.linkingFingerprints.set(path, fingerprint);
             return;
         }
 
         // Skip files that are not in the linker directories
         if (!includeFile && !isInIncludedDir && !metaInfo.includeAllFiles) {
+            this.linkingFingerprints.set(path, fingerprint);
             return;
         }
 
-        const metadata = this.app.metadataCache.getFileCache(file);
         const aliases = PrefixTree.normalizeFrontmatterStringList(metadata?.frontmatter?.aliases);
 
         // Collect values from additional user-configured frontmatter fields.
@@ -308,6 +328,33 @@ export class PrefixTree {
         namesWithCaseMatch.forEach((name) => {
             this.addFileWithName(name, file, true);
         });
+
+        this.linkingFingerprints.set(path, fingerprint);
+        this.dirty = true;
+    }
+
+    private computeLinkingFingerprint(file: TFile, metaInfo: LinkerFileMetaInfo, metadata: ReturnType<App['metadataCache']['getFileCache']>): string {
+        const aliases = PrefixTree.normalizeFrontmatterStringList(metadata?.frontmatter?.aliases).sort();
+        const caseTags = (metadata ? getAllTags(metadata) ?? [] : [])
+            .filter(PrefixTree.isNoneEmptyString)
+            .filter(t => t === this.settings.tagToMatchCase || t === this.settings.tagToIgnoreCase)
+            .sort();
+        const customFields = (this.settings.customFrontmatterFields ?? []).slice().sort();
+        const customValues = customFields.map(field => {
+            const vals = PrefixTree.normalizeFrontmatterStringList(metadata?.frontmatter?.[field]).sort();
+            return `${field}:${vals.join(',')}`;
+        });
+
+        return [
+            file.basename,
+            aliases.join(','),
+            caseTags.join(','),
+            customValues.join(';'),
+            metaInfo.includeFile ? '1' : '0',
+            metaInfo.excludeFile ? '1' : '0',
+            metaInfo.isInIncludedDir ? '1' : '0',
+            metaInfo.isInExcludedDir ? '1' : '0',
+        ].join('|');
     }
 
     private removeFileFromTree(file: TFile | string) {
@@ -343,6 +390,8 @@ export class PrefixTree {
 
         // Remove the update time of the file
         this.mapIndexedFilePathsToUpdateTime.delete(path);
+
+        this.dirty = true;
     }
 
     private fileIsUpToDate(file: TFile) {
@@ -515,6 +564,14 @@ export class LinkerCache {
 
     clearCache() {
         this.cache.clear();
+    }
+
+    isCacheDirty(): boolean {
+        return this.cache.dirty;
+    }
+
+    clearCacheDirty(): void {
+        this.cache.dirty = false;
     }
 
     rebuildCache() {

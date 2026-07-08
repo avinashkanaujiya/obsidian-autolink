@@ -724,7 +724,10 @@ export default class LinkerPlugin extends Plugin {
                 cache.updateFiles(pendingPaths);
             }
 
-            this.rerenderReadingViews();
+            if (cache.isCacheDirty()) {
+                this.rerenderReadingViews();
+                cache.clearCacheDirty();
+            }
             this.updateManager.update();
         }, 75);
     }

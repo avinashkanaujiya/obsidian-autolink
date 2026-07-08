@@ -248,6 +248,8 @@ describe('LinkerPlugin.scheduleCacheRefresh', () => {
         jest.spyOn(LinkerCache, 'getInstance').mockReturnValue({
             rebuildCache,
             updateFiles,
+            isCacheDirty: jest.fn().mockReturnValue(true),
+            clearCacheDirty: jest.fn(),
         } as unknown as LinkerCache);
 
         plugin.scheduleCacheRefresh(['Notes/Alpha.md', 'Notes/Beta.md']);
@@ -268,6 +270,8 @@ describe('LinkerPlugin.scheduleCacheRefresh', () => {
         jest.spyOn(LinkerCache, 'getInstance').mockReturnValue({
             rebuildCache,
             updateFiles,
+            isCacheDirty: jest.fn().mockReturnValue(true),
+            clearCacheDirty: jest.fn(),
         } as unknown as LinkerCache);
 
         plugin.scheduleCacheRefresh(['Notes/Alpha.md']);
