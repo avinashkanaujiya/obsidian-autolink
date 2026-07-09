@@ -63,7 +63,7 @@ export async function removeTermFromFrontmatter(
             modified = removeTermFromFields(fm, term, customFields);
         });
     } catch (e) {
-        console.error('[Autolink] Failed to remove term from frontmatter', e);
+        console.error('[Virtual Autolink] Failed to remove term from frontmatter', e);
         new Notice(`Failed to update frontmatter for ${file.basename}`);
         return false;
     }

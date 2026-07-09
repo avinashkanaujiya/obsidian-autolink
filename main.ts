@@ -809,14 +809,14 @@ export default class LinkerPlugin extends Plugin {
                                 const to = parseInt(targetElement.getAttribute('to') || '-1');
 
                                 if (from === -1 || to === -1) {
-                                    console.error('[Autolink] No from or to position');
+                                    console.error('[Virtual Autolink] No from or to position');
                                     return;
                                 }
 
                                 const text = targetElement.getAttribute('origin-text') || '';
                                 const activeFile = app.workspace.getActiveFile();
                                 if (!activeFile) {
-                                    console.error('[Autolink] No active file');
+                                    console.error('[Virtual Autolink] No active file');
                                     return;
                                 }
 
@@ -827,7 +827,7 @@ export default class LinkerPlugin extends Plugin {
                                 const toEditorPos = editor?.offsetToPos(to);
 
                                 if (!fromEditorPos || !toEditorPos) {
-                                    console.warn('[Autolink] No editor positions');
+                                    console.warn('[Virtual Autolink] No editor positions');
                                     return;
                                 }
 
@@ -965,7 +965,7 @@ export default class LinkerPlugin extends Plugin {
     }
 
     /**
-     * Ensure the Autolink Highlights panel is open in the right sidebar and
+     * Ensure the Virtual Autolink Highlights panel is open in the right sidebar and
      * visible.  Creates a new leaf only when none exists yet.
      */
     private async revealHighlightSidebar(): Promise<void> {
@@ -987,9 +987,9 @@ export default class LinkerPlugin extends Plugin {
      * Two-phase, mode-agnostic scroll toward the first highlighted occurrence.
      *
      * Phase A – DOM search (both modes)
-     *   Reading mode  : <mark class="autolink-highlight"> injected by
+     *   Reading mode  : <mark class="virtual-autolink-highlight"> injected by
      *                   applyHighlightToDOM().  Scroll via DOM scrollIntoView.
-     *   Live preview  : <span class="autolink-highlight"> rendered by CM6.
+     *   Live preview  : <span class="virtual-autolink-highlight"> rendered by CM6.
      *                   Scroll via DOM scrollIntoView.
      *
      * Phase B – editor kick (live preview only, runs once when Phase A fails)
@@ -1028,15 +1028,15 @@ export default class LinkerPlugin extends Plugin {
             // ── Phase A: DOM search ────────────────────────────────────────
             // Reading mode injected <mark>
             const domMark = (view as MarkdownView).contentEl
-                .querySelector('mark.autolink-highlight');
+                .querySelector('mark.virtual-autolink-highlight');
             if (domMark instanceof HTMLElement) {
                 domMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 return;
             }
 
-            // Live-preview CM6 rendered <span class="autolink-highlight">
+            // Live-preview CM6 rendered <span class="virtual-autolink-highlight">
             const cmMark = (view as MarkdownView).contentEl
-                .querySelector('.cm-content .autolink-highlight');
+                .querySelector('.cm-content .virtual-autolink-highlight');
             if (cmMark instanceof HTMLElement) {
                 cmMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 return;
@@ -1090,7 +1090,7 @@ export default class LinkerPlugin extends Plugin {
             this.settings.defaultUseMarkdownLinks = appSettings.useMarkdownLinks ?? false;
             this.settings.defaultLinkFormat = appSettings.newLinkFormat ?? 'shortest';
         } catch (e) {
-            console.warn('[Autolink] Could not read Obsidian app.json settings, using defaults.', e);
+            console.warn('[Virtual Autolink] Could not read Obsidian app.json settings, using defaults.', e);
         }
     }
 

@@ -51,7 +51,7 @@ export class LinkerFileMetaInfo {
         this.fetcher = fetcher;
         const resolvedFile = file instanceof TFile ? file : this.fetcher.app.vault.getFileByPath(file.path);
         if (!resolvedFile) {
-            console.warn(`[Autolink] Could not resolve file at path: ${file.path}`);
+            console.warn(`[Virtual Autolink] Could not resolve file at path: ${file.path}`);
         }
         this.file = resolvedFile as TFile;
 

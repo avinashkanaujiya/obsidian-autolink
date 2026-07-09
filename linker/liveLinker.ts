@@ -89,7 +89,7 @@ export function collectVirtualLinkSyntaxClasses(view: EditorView, from: number, 
     return Array.from(classes);
 }
 
-class AutoLinkerPlugin implements PluginValue {
+class VirtualAutoLinkerPlugin implements PluginValue {
     decorations: DecorationSet;
     app: App;
     vault: Vault;
@@ -471,7 +471,7 @@ class AutoLinkerPlugin implements PluginValue {
                     decoSpecs.push({
                         from: plainFrom,
                         to: plainTo,
-                        deco: Decoration.mark({ class: 'autolink-highlight' }),
+                        deco: Decoration.mark({ class: 'virtual-autolink-highlight' }),
                     });
                     highlightedLineNumbers.add(lineNumber);
                 }
@@ -504,8 +504,8 @@ class AutoLinkerPlugin implements PluginValue {
     }
 }
 
-const pluginSpec: PluginSpec<AutoLinkerPlugin> = {
-    decorations: (value: AutoLinkerPlugin) => value.decorations,
+const pluginSpec: PluginSpec<VirtualAutoLinkerPlugin> = {
+    decorations: (value: VirtualAutoLinkerPlugin) => value.decorations,
 };
 
 export const liveLinkerPlugin = (
@@ -515,6 +515,6 @@ export const liveLinkerPlugin = (
     highlightService: HighlightService | null = null
 ) => {
     return ViewPlugin.define((editorView: EditorView) => {
-        return new AutoLinkerPlugin(editorView, app, settings, updateManager, highlightService);
+        return new VirtualAutoLinkerPlugin(editorView, app, settings, updateManager, highlightService);
     }, pluginSpec);
 };

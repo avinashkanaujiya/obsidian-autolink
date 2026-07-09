@@ -61,7 +61,7 @@ export class VirtualMatch {
         }
 
         const mark = document.createElement('span');
-        mark.classList.add('autolink-highlight');
+        mark.classList.add('virtual-autolink-highlight');
         mark.textContent = highlightMatch.matchText;
         link.appendChild(mark);
 

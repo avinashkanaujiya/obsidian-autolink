@@ -1,5 +1,5 @@
 /*
-  Autolink virtual-link styles.
+  Virtual Autolink virtual-link styles.
   These classes are applied by the plugin to auto-generated virtual links.
   Users can override any of these in a custom CSS snippet.
 */
@@ -51,49 +51,49 @@
   theme accent so it feels consistent in both reading mode and live preview.
 
   Two separate rules cover both modes:
-    • Reading mode  → DOM <mark class="autolink-highlight"> elements
-    • Live preview  → CM6 mark decoration (<span class="autolink-highlight">)
+    • Reading mode  → DOM <mark class="virtual-autolink-highlight"> elements
+    • Live preview  → CM6 mark decoration (<span class="virtual-autolink-highlight">)
                       and highlighted virtual-link widget spans
 */
 
 body {
-    --autolink-highlight-bg: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
-    --autolink-highlight-bg-hover: color-mix(in srgb, var(--interactive-accent) 36%, transparent);
-    --autolink-highlight-outline: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+    --virtual-autolink-highlight-bg: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+    --virtual-autolink-highlight-bg-hover: color-mix(in srgb, var(--interactive-accent) 36%, transparent);
+    --virtual-autolink-highlight-outline: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
 }
 
 /* Reading mode injected <mark> */
-mark.autolink-highlight {
-    background-color: var(--autolink-highlight-bg);
+mark.virtual-autolink-highlight {
+    background-color: var(--virtual-autolink-highlight-bg);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;
     transition: background-color 0.2s ease;
 }
 
-mark.autolink-highlight:hover {
-    background-color: var(--autolink-highlight-bg-hover);
+mark.virtual-autolink-highlight:hover {
+    background-color: var(--virtual-autolink-highlight-bg-hover);
 }
 
-mark.autolink-highlight:first-of-type {
-    outline: 1px solid var(--autolink-highlight-outline);
+mark.virtual-autolink-highlight:first-of-type {
+    outline: 1px solid var(--virtual-autolink-highlight-outline);
     outline-offset: 1px;
 }
 
 /* Live-preview CM6 mark decoration span + highlighted virtual-link widgets */
-.autolink-highlight {
-    background-color: var(--autolink-highlight-bg);
+.virtual-autolink-highlight {
+    background-color: var(--virtual-autolink-highlight-bg);
     border-radius: 2px;
     transition: background-color 0.2s ease;
 }
 
-.autolink-highlight:hover {
-    background-color: var(--autolink-highlight-bg-hover);
+.virtual-autolink-highlight:hover {
+    background-color: var(--virtual-autolink-highlight-bg-hover);
 }
 
-/* ── Autolink Highlights sidebar panel ───────────────────────────────────── */
+/* ── Virtual Autolink Highlights sidebar panel ──────────────────────────────── */
 
-.autolink-highlight-view {
+.virtual-autolink-highlight-view {
     display: flex;
     flex-direction: column;
     padding: 12px 10px;
@@ -104,20 +104,20 @@ mark.autolink-highlight:first-of-type {
 }
 
 /* Header */
-.autolink-hl-header {
+.virtual-autolink-hl-header {
     padding-bottom: 10px;
     margin-bottom: 8px;
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.autolink-hl-term {
+.virtual-autolink-hl-term {
     font-weight: 600;
     font-size: 1.0em;
     color: var(--text-accent);
     word-break: break-word;
 }
 
-.autolink-hl-subtitle {
+.virtual-autolink-hl-subtitle {
     font-size: 0.78em;
     color: var(--text-muted);
     margin-top: 2px;
@@ -127,7 +127,7 @@ mark.autolink-highlight:first-of-type {
 }
 
 /* Count badge */
-.autolink-hl-count {
+.virtual-autolink-hl-count {
     font-size: 0.75em;
     color: var(--text-faint);
     margin-bottom: 6px;
@@ -135,13 +135,13 @@ mark.autolink-highlight:first-of-type {
 }
 
 /* Occurrence list */
-.autolink-hl-list {
+.virtual-autolink-hl-list {
     display: flex;
     flex-direction: column;
     gap: 3px;
 }
 
-.autolink-hl-item {
+.virtual-autolink-hl-item {
     display: flex;
     align-items: baseline;
     gap: 6px;
@@ -152,17 +152,17 @@ mark.autolink-highlight:first-of-type {
     transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-.autolink-hl-item:hover {
+.virtual-autolink-hl-item:hover {
     background: var(--background-modifier-hover);
     border-color: var(--background-modifier-border);
 }
 
-.autolink-hl-item:active {
+.virtual-autolink-hl-item:active {
     background: var(--background-modifier-active-hover);
 }
 
 /* Line-number chip */
-.autolink-hl-lineno {
+.virtual-autolink-hl-lineno {
     flex-shrink: 0;
     font-family: var(--font-monospace);
     font-size: 0.68em;
@@ -176,7 +176,7 @@ mark.autolink-highlight:first-of-type {
 }
 
 /* Context text */
-.autolink-hl-ctx {
+.virtual-autolink-hl-ctx {
     font-size: 0.82em;
     color: var(--text-normal);
     line-height: 1.45;
@@ -186,7 +186,7 @@ mark.autolink-highlight:first-of-type {
 /* The <mark> inside each context snippet reuses the same green style */
 
 /* Empty / placeholder state */
-.autolink-hl-empty {
+.virtual-autolink-hl-empty {
     color: var(--text-muted);
     font-size: 0.85em;
     text-align: center;
@@ -197,15 +197,15 @@ mark.autolink-highlight:first-of-type {
 
 /* ── Multi-file grouped sidebar (aggregate highlights) ──────────────────── */
 
-.autolink-hl-file-group {
+.virtual-autolink-hl-file-group {
     margin-bottom: 10px;
 }
 
-.autolink-hl-file-group:last-child {
+.virtual-autolink-hl-file-group:last-child {
     margin-bottom: 0;
 }
 
-.autolink-hl-file-header {
+.virtual-autolink-hl-file-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -215,7 +215,7 @@ mark.autolink-highlight:first-of-type {
     margin-bottom: 4px;
 }
 
-.autolink-hl-filename {
+.virtual-autolink-hl-filename {
     font-size: 0.85em;
     font-weight: 600;
     color: var(--text-normal);
@@ -225,7 +225,7 @@ mark.autolink-highlight:first-of-type {
 }
 
 /* Count badge inside a file header — no extra margin */
-.autolink-hl-file-header .autolink-hl-count {
+.virtual-autolink-hl-file-header .virtual-autolink-hl-count {
     flex-shrink: 0;
     margin-bottom: 0;
     font-size: 0.7em;
@@ -237,7 +237,7 @@ mark.autolink-highlight:first-of-type {
 
 /* ── Dismiss button (×) on highlight occurrence rows ─────────────────────── */
 
-.autolink-hl-dismiss {
+.virtual-autolink-hl-dismiss {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -257,15 +257,15 @@ mark.autolink-highlight:first-of-type {
     transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.autolink-hl-item:hover .autolink-hl-dismiss {
+.virtual-autolink-hl-item:hover .virtual-autolink-hl-dismiss {
     opacity: 1;
 }
 
-.autolink-hl-dismiss:hover {
+.virtual-autolink-hl-dismiss:hover {
     background: var(--background-modifier-error);
     color: var(--text-error);
 }
 
-.autolink-hl-dismiss:active {
+.virtual-autolink-hl-dismiss:active {
     background: var(--background-modifier-error-hover);
 }

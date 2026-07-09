@@ -299,7 +299,7 @@ describe('HighlightView.navigateTo', () => {
             }),
             contentEl: {
                 querySelector: jest.fn((selector: string) => {
-                    if (rendered && selector === 'mark.autolink-highlight[data-autolink-source-line="12"]') {
+                    if (rendered && selector === 'mark.virtual-autolink-highlight[data-virtual-autolink-source-line="12"]') {
                         return target;
                     }
                     return null;

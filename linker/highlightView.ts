@@ -4,7 +4,7 @@ import { ActiveHighlightEntry, findFirstMatch, HighlightService } from './highli
 import { ExternalUpdateManager } from './linkerCache';
 import { removeTermFromFrontmatter } from './frontmatterUtils';
 
-export const HIGHLIGHT_VIEW_TYPE = 'autolink-highlight-view';
+export const HIGHLIGHT_VIEW_TYPE = 'virtual-autolink-highlight-view';
 
 interface Occurrence {
     index:     number;   // 0-based rank, used as a fallback when source-line metadata is unavailable
@@ -38,11 +38,11 @@ export class HighlightView extends ItemView {
     }
 
     getViewType()    { return HIGHLIGHT_VIEW_TYPE; }
-    getDisplayText() { return 'Autolink Highlights'; }
+    getDisplayText() { return 'Virtual Autolink Highlights'; }
     getIcon()        { return 'highlighter'; }
 
     async onOpen(): Promise<void> {
-        this.contentEl.addClass('autolink-highlight-view');
+        this.contentEl.addClass('virtual-autolink-highlight-view');
 
         this.unsubHighlight = this.hs.onUpdate(() => {
             // Force a full re-render when highlights change.
@@ -128,8 +128,8 @@ export class HighlightView extends ItemView {
         // If every group shares the same search text, show it once at the top.
         const allSameSearch = groups.every(g => g.searchText === groups[0].searchText);
         if (allSameSearch) {
-            const hdr = this.contentEl.createDiv({ cls: 'autolink-hl-header' });
-            hdr.createEl('div', { cls: 'autolink-hl-term' }).setText(`"${groups[0].searchText}"`);
+            const hdr = this.contentEl.createDiv({ cls: 'virtual-autolink-hl-header' });
+            hdr.createEl('div', { cls: 'virtual-autolink-hl-term' }).setText(`"${groups[0].searchText}"`);
         }
 
         // ── Render each file group ───────────────────────────────────────────
@@ -185,35 +185,35 @@ export class HighlightView extends ItemView {
     // Rendering
 
     private renderEmpty(msg: string): void {
-        this.contentEl.createDiv({ cls: 'autolink-hl-empty' }).setText(msg);
+        this.contentEl.createDiv({ cls: 'virtual-autolink-hl-empty' }).setText(msg);
     }
 
     private renderFileGroup(group: FileGroup): void {
         const root = this.contentEl;
 
-        const groupEl = root.createDiv({ cls: 'autolink-hl-file-group' });
+        const groupEl = root.createDiv({ cls: 'virtual-autolink-hl-file-group' });
 
         // File header
-        const hdr = groupEl.createDiv({ cls: 'autolink-hl-file-header' });
-        hdr.createEl('span', { cls: 'autolink-hl-filename' }).setText(group.fileName);
-        hdr.createEl('span', { cls: 'autolink-hl-count' }).setText(
+        const hdr = groupEl.createDiv({ cls: 'virtual-autolink-hl-file-header' });
+        hdr.createEl('span', { cls: 'virtual-autolink-hl-filename' }).setText(group.fileName);
+        hdr.createEl('span', { cls: 'virtual-autolink-hl-count' }).setText(
             `${group.occurrences.length}`
         );
 
         if (group.occurrences.length === 0) {
-            groupEl.createDiv({ cls: 'autolink-hl-empty' })
+            groupEl.createDiv({ cls: 'virtual-autolink-hl-empty' })
                 .setText('No occurrences found in note body');
             return;
         }
 
-        const list = groupEl.createDiv({ cls: 'autolink-hl-list' });
+        const list = groupEl.createDiv({ cls: 'virtual-autolink-hl-list' });
 
         for (const occ of group.occurrences) {
-            const item = list.createDiv({ cls: 'autolink-hl-item' });
+            const item = list.createDiv({ cls: 'virtual-autolink-hl-item' });
             item.setAttribute('title', `Jump to line ${occ.line + 1}`);
 
             // Dismiss button — removes the search term from this note's frontmatter
-            const dismissBtn = item.createEl('button', { cls: 'autolink-hl-dismiss' });
+            const dismissBtn = item.createEl('button', { cls: 'virtual-autolink-hl-dismiss' });
             dismissBtn.textContent = '×';
             dismissBtn.setAttribute('aria-label', 'Remove from frontmatter');
             dismissBtn.setAttribute('title', 'Remove from frontmatter');
@@ -222,11 +222,11 @@ export class HighlightView extends ItemView {
                 void this.handleDismiss(group.filePath, group.searchText, group.fileName);
             });
 
-            item.createEl('span', { cls: 'autolink-hl-lineno' })
+            item.createEl('span', { cls: 'virtual-autolink-hl-lineno' })
                 .setText(`L${occ.line + 1}`);
 
             this.renderContextLine(
-                item.createEl('span', { cls: 'autolink-hl-ctx' }),
+                item.createEl('span', { cls: 'virtual-autolink-hl-ctx' }),
                 occ.rawLine, occ.ch, occ.matchText,
             );
 
@@ -288,7 +288,7 @@ export class HighlightView extends ItemView {
         }
 
         const mark = document.createElement('mark');
-        mark.className = 'autolink-highlight';
+        mark.className = 'virtual-autolink-highlight';
         mark.textContent = slice.slice(relStart, relEnd);
         frag.appendChild(mark);
 
@@ -316,11 +316,11 @@ export class HighlightView extends ItemView {
         // added by applyHighlightToDOM(); fall back to the old nth-mark lookup
         // only when that metadata is unavailable.
         const byLine = previewRoot.querySelector(
-            `mark.autolink-highlight[data-autolink-source-line="${occ.line}"]`
+            `mark.virtual-autolink-highlight[data-virtual-autolink-source-line="${occ.line}"]`
         );
         if (byLine instanceof HTMLElement) return byLine;
 
-        const marks = previewRoot.querySelectorAll('mark.autolink-highlight');
+        const marks = previewRoot.querySelectorAll('mark.virtual-autolink-highlight');
         const byIndex = marks[occ.index];
         return byIndex instanceof HTMLElement ? byIndex : null;
     }

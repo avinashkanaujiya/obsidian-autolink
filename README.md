@@ -1,9 +1,9 @@
 [![GitHub Sponsors](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-pink.svg)](https://github.com/sponsors/avinashkanaujiya)
 
 > [!NOTE]
-> This project was originally forked from [Obsidian Virtual Linker](https://github.com/vschroeter/obsidian-virtual-linker) by [Valentin Schröter](https://github.com/vschroeter/), now maintained independently as **Autolink**.
+> This project was originally forked from [Obsidian Virtual Linker](https://github.com/vschroeter/obsidian-virtual-linker) by [Valentin Schröter](https://github.com/vschroeter/), now maintained independently as **Virtual Autolink**.
 
-# Autolink
+# Virtual Autolink
 
 This plugin automatically generates virtual links for text within your notes that match with the titles or aliases of other notes in your vault.
 
@@ -35,13 +35,13 @@ If you only want to include notes of a specific folder, you can define this fold
 ### Via BRAT (Recommended)
 
 1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin in Obsidian
-2. In BRAT settings, add `avinashkanaujiya/obsidian-autolink` as a beta plugin
-3. Enable "Autolink" in Community Plugins settings
+2. In BRAT settings, add `avinashkanaujiya/obsidian-virtual-autolink` as a beta plugin
+3. Enable "Virtual Autolink" in Community Plugins settings
 
 ### Manual install
 
-- Download `main.js` & `manifest.json` from [Releases](https://github.com/avinashkanaujiya/obsidian-autolink/releases)
-- Copy them to `VaultFolder/.obsidian/plugins/autolink/`
+- Download `main.js` & `manifest.json` from [Releases](https://github.com/avinashkanaujiya/obsidian-virtual-autolink/releases)
+- Copy them to `VaultFolder/.obsidian/plugins/virtual-autolink/`
 - Enable the plugin in settings
 
 ## Settings
@@ -132,8 +132,8 @@ To apply custom styling to the links, you can add a CSS-snippet at `VaultFolder/
 The plugin provides the following commands that you can use:
 
 - **Convert All Virtual Links in Selection to Real Links**: Converts all virtual links within the selected text to real links.
-- **Activate Virtual Linker**: Activates autolink if it is currently deactivated.
-- **Deactivate Virtual Linker**: Deactivates autolink if it is currently activated.
+- **Activate Virtual Linker**: Activates Virtual Autolink if it is currently deactivated.
+- **Deactivate Virtual Linker**: Deactivates Virtual Autolink if it is currently activated.
 
 You can access these commands from the command palette or assign custom hotkeys to them in the settings.
 
@@ -142,12 +142,12 @@ You can access these commands from the command palette or assign custom hotkeys 
 When right-clicking on a virtual link, the following options are available in the context menu:
 
 - **Convert to real link**: Converts the selected virtual link to a real link.
-- **Exclude this file**: Adds the `linker-exclude` tag to the file, preventing it from being matched by autolink.
-- **Include this file**: Adds the `linker-include` tag to the file, ensuring it is matched by autolink.
+- **Exclude this file**: Adds the `linker-exclude` tag to the file, preventing it from being matched by Virtual Autolink.
+- **Include this file**: Adds the `linker-include` tag to the file, ensuring it is matched by Virtual Autolink.
 
 ## How to use for development
 
-- Clone [this repo](https://github.com/avinashkanaujiya/obsidian-autolink) into `your-vault/.obsidian/plugins/`.
+- Clone [this repo](https://github.com/avinashkanaujiya/obsidian-virtual-autolink) into `your-vault/.obsidian/plugins/`.
 - `yarn` to install dependencies
 - `yarn dev` to start compilation in watch mode.
 - `yarn build` to compile your `main.ts` into `main.js`.

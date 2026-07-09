@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install.sh — Build and install the Autolink plugin into an Obsidian vault
+# install.sh — Build and install the Virtual Autolink plugin into an Obsidian vault
 #
 # Usage:
 #   ./install.sh                        Build and install once
@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_SRC="$SCRIPT_DIR"
-PLUGIN_ID="autolink"
+PLUGIN_ID="virtual-autolink"
 
 # Default vault location — override with --vault
 DEFAULT_VAULT="$HOME/obsidian/notes"
@@ -171,7 +171,7 @@ print_reload_hint() {
     printf "\n"
     rule "─" "$DIM"
     printf "${DIM}  To activate in Obsidian:${RESET}\n"
-    printf "${DIM}    Settings → Community plugins → enable \"Autolink\"${RESET}\n"
+    printf "${DIM}    Settings → Community plugins → enable \"Virtual Autolink\"${RESET}\n"
     printf "${DIM}    (already enabled? disable → re-enable, or use Hot Reload plugin)${RESET}\n"
     rule "─" "$DIM"
     printf "\n"
@@ -203,7 +203,7 @@ watch_plugin() {
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-print_header "Autolink Plugin Installer"
+print_header "Virtual Autolink Plugin Installer"
 printf "${WHITE}  Source :${RESET}  %s\n" "$PLUGIN_SRC"
 printf "${WHITE}  Install:${RESET}  %s\n" "$INSTALL_DIR"
 printf "${WHITE}  Mode   :${RESET}  %s\n\n" \

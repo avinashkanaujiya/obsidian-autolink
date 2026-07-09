@@ -186,7 +186,7 @@ export function findFirstMatch(text: string, searchText: string): TextMatch | nu
 }
 
 /**
- * Inject `<mark class="autolink-highlight">` around the first case-insensitive
+ * Inject `<mark class="virtual-autolink-highlight">` around the first case-insensitive
  * occurrence of `searchText` per source line inside `containerEl`, when source
  * section information is available. Falls back to rendered-line heuristics when
  * section info is unavailable. Calling this again removes previous marks before
@@ -198,7 +198,7 @@ export function applyHighlightToDOM(
     sectionInfo: HighlightSectionInfo | null = null,
 ): void {
     // Remove previous highlights so repeated calls are idempotent.
-    containerEl.querySelectorAll('mark.autolink-highlight').forEach(mark => {
+    containerEl.querySelectorAll('mark.virtual-autolink-highlight').forEach(mark => {
         const parent = mark.parentNode;
         if (!parent) return;
         while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
@@ -271,9 +271,9 @@ export function applyHighlightToDOM(
             }
 
             const mark = document.createElement('mark');
-            mark.className = 'autolink-highlight';
+            mark.className = 'virtual-autolink-highlight';
             if (sourceLine !== null) {
-                mark.dataset.autolinkSourceLine = String(sourceLine);
+                mark.dataset.virtualAutolinkSourceLine = String(sourceLine);
             }
             mark.textContent = match[0];
             frag.appendChild(mark);
