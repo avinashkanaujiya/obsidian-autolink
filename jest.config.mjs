@@ -1,6 +1,7 @@
 export default {
     preset: 'ts-jest',
     testEnvironment: 'node',
+    setupFiles: ['<rootDir>/tests/setup.ts'],
     testMatch: ['**/tests/**/*.test.ts'],
     moduleNameMapper: {
         '^obsidian$': '<rootDir>/tests/__mocks__/obsidian.ts',

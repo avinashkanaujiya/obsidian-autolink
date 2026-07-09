@@ -1,6 +1,5 @@
 import { App, Notice, TFile } from 'obsidian';
 import { LinkerPluginSettings } from 'main';
-import { LinkerCache } from './linkerCache';
 
 /**
  * Remove a term from the given frontmatter object.
@@ -59,7 +58,7 @@ export async function removeTermFromFrontmatter(
 
     let modified = false;
     try {
-        await app.fileManager.processFrontMatter(file, (fm) => {
+        await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
             modified = removeTermFromFields(fm, term, customFields);
         });
     } catch (e) {

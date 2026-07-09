@@ -213,7 +213,8 @@ export function applyHighlightToDOM(
 
     // Walk only plain text nodes; skip code, pre, script, style, and the
     // Obsidian Properties / frontmatter panel (.metadata-container).
-    const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT, {
+    const ownerDoc = containerEl.ownerDocument;
+    const walker = ownerDoc.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
             const parent = node.parentElement;
             if (!parent) return NodeFilter.FILTER_REJECT;
@@ -238,7 +239,7 @@ export function applyHighlightToDOM(
 
         const mappedStart = sourceMapper?.locate(text) ?? null;
         const fallbackHighlightedRenderedLines = new Set<number>();
-        const frag = document.createDocumentFragment();
+        const frag = ownerDoc.createDocumentFragment();
         let replaced = false;
         let lastIndex = 0;
         let match: RegExpExecArray | null;
@@ -267,10 +268,10 @@ export function applyHighlightToDOM(
             }
 
             if (match.index > lastIndex) {
-                frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+                frag.appendChild(ownerDoc.createTextNode(text.slice(lastIndex, match.index)));
             }
 
-            const mark = document.createElement('mark');
+            const mark = ownerDoc.createElement('mark');
             mark.className = 'virtual-autolink-highlight';
             if (sourceLine !== null) {
                 mark.dataset.virtualAutolinkSourceLine = String(sourceLine);
@@ -285,7 +286,7 @@ export function applyHighlightToDOM(
 
         if (replaced) {
             if (lastIndex < text.length) {
-                frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+                frag.appendChild(ownerDoc.createTextNode(text.slice(lastIndex)));
             }
             parent.replaceChild(frag, textNode);
         }

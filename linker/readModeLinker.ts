@@ -170,15 +170,16 @@ export class GlossaryLinker extends MarkdownRenderChild {
                         );
 
                         const parent = childNode.parentElement;
+                        const ownerDoc = parent?.ownerDocument ?? document;
                         let lastTo = 0;
 
                         matches.forEach((match) => {
                             match.files.forEach((f) => linkedFiles.add(f));
 
-                            const span = match.getCompleteLinkElement();
+                            const span = match.getCompleteLinkElement(null, [], ownerDoc);
 
                             if (match.from > 0) {
-                                parent?.insertBefore(document.createTextNode(text.slice(lastTo, match.from)), childNode);
+                                parent?.insertBefore(ownerDoc.createTextNode(text.slice(lastTo, match.from)), childNode);
                             }
 
                             parent?.insertBefore(span, childNode);
@@ -187,7 +188,7 @@ export class GlossaryLinker extends MarkdownRenderChild {
 
                         const textLength = text.length;
                         if (lastTo < textLength) {
-                            parent?.insertBefore(document.createTextNode(text.slice(lastTo)), childNode);
+                            parent?.insertBefore(ownerDoc.createTextNode(text.slice(lastTo)), childNode);
                         }
                         parent?.removeChild(childNode);
                         childNodeIndex += 1;

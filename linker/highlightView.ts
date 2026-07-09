@@ -278,25 +278,26 @@ export class HighlightView extends ItemView {
         const suffix = end < rawLine.length ? '…' : '';
         const slice  = rawLine.slice(start, end);
 
-        const frag = document.createDocumentFragment();
+        const ownerDoc = el.ownerDocument;
+        const frag = ownerDoc.createDocumentFragment();
         const relStart = Math.max(0, matchStart - start);
         const relEnd = Math.min(slice.length, relStart + matchText.length);
 
-        if (prefix) frag.appendChild(document.createTextNode(prefix));
+        if (prefix) frag.appendChild(ownerDoc.createTextNode(prefix));
         if (relStart > 0) {
-            frag.appendChild(document.createTextNode(slice.slice(0, relStart)));
+            frag.appendChild(ownerDoc.createTextNode(slice.slice(0, relStart)));
         }
 
-        const mark = document.createElement('mark');
+        const mark = ownerDoc.createElement('mark');
         mark.className = 'virtual-autolink-highlight';
         mark.textContent = slice.slice(relStart, relEnd);
         frag.appendChild(mark);
 
         if (relEnd < slice.length) {
-            frag.appendChild(document.createTextNode(slice.slice(relEnd)));
+            frag.appendChild(ownerDoc.createTextNode(slice.slice(relEnd)));
         }
         if (suffix) {
-            frag.appendChild(document.createTextNode(suffix));
+            frag.appendChild(ownerDoc.createTextNode(suffix));
         }
 
         el.appendChild(frag);
@@ -356,7 +357,7 @@ export class HighlightView extends ItemView {
             nextPreviewKickDone = true;
         }
 
-        setTimeout(() => {
+        window.setTimeout(() => {
             this.queuePreviewOccurrenceScroll(view, occ, attempt + 1, nextPreviewKickDone);
         }, attempt === 0 ? 60 : RETRY_MS);
     }

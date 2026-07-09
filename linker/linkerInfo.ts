@@ -53,7 +53,8 @@ export class LinkerFileMetaInfo {
         if (!resolvedFile) {
             console.warn(`[Virtual Autolink] Could not resolve file at path: ${file.path}`);
         }
-        this.file = resolvedFile as TFile;
+        // ponytail: keep original cast semantics but guard null; getFileCache handles null
+        this.file = (resolvedFile ?? file) as TFile;
 
         const settings = this.fetcher.settings;
 

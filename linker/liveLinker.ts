@@ -48,8 +48,8 @@ export class VirtualLinkWidget extends WidgetType {
     ) {
         super();
     }
-    toDOM(_view: EditorView): HTMLElement {
-        return this.match.getCompleteLinkElement(this.highlightText, this.syntaxClasses);
+    toDOM(view: EditorView): HTMLElement {
+        return this.match.getCompleteLinkElement(this.highlightText, this.syntaxClasses, view.dom.ownerDocument);
     }
 }
 

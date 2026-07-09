@@ -176,7 +176,8 @@ type VirtualLinkHoverElement = {
 const OPEN_ALL_DELAY_MS = 200;
 export const VIRTUAL_LINK_HOVER_DELAY_MS = 180;
 const VIRTUAL_LINK_HOVER_ACTIVE_CLASS = 'virtual-link-hover-active';
-const virtualLinkHoverTimers = new WeakMap<VirtualLinkHoverElement, ReturnType<typeof setTimeout>>();
+// ponytail: number (browser setTimeout) not NodeJS.Timeout; @types/node pollutes global
+const virtualLinkHoverTimers = new WeakMap<VirtualLinkHoverElement, number>();
 
 function getClosestCapableElement(target: EventTarget | null): ClosestCapableElement | null {
     const candidate = target as unknown as ClosestCapableElement | null;
@@ -220,7 +221,7 @@ function clearVirtualLinkHoverTimer(element: VirtualLinkHoverElement): void {
         return;
     }
 
-    clearTimeout(timer);
+    window.clearTimeout(timer);
     virtualLinkHoverTimers.delete(element);
 }
 
@@ -253,7 +254,7 @@ function parseVirtualLinkPaths(rawPaths: string | null): string[] {
     if (!rawPaths) return [];
 
     try {
-        const parsed = JSON.parse(rawPaths);
+        const parsed: unknown = JSON.parse(rawPaths);
         if (!Array.isArray(parsed)) {
             return [];
         }
@@ -265,13 +266,13 @@ function parseVirtualLinkPaths(rawPaths: string | null): string[] {
 }
 
 function wait(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 type MetadataCacheReadyAware = {
     // Present at runtime in Obsidian, but missing from the published typings.
     initialized?: boolean;
-    on(name: 'resolved', callback: () => any, ctx?: any): unknown;
+    on(name: 'resolved', callback: () => unknown, ctx?: unknown): unknown;
 };
 
 export function registerInitialMetadataCacheRefresh(
@@ -311,7 +312,7 @@ export function handleVirtualLinkHoverEnterEvent(e: MouseEvent): void {
     clearVirtualLinkHoverTimer(hoverElement);
     hoverElement.classList.remove(VIRTUAL_LINK_HOVER_ACTIVE_CLASS);
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
         hoverElement.classList.add(VIRTUAL_LINK_HOVER_ACTIVE_CLASS);
         virtualLinkHoverTimers.delete(hoverElement);
     }, VIRTUAL_LINK_HOVER_DELAY_MS);
@@ -380,11 +381,13 @@ export default class LinkerPlugin extends Plugin {
     settings: LinkerPluginSettings;
     updateManager = new ExternalUpdateManager();
     highlightService = new HighlightService();
-    private cacheRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    // ponytail: number (browser setTimeout) not NodeJS.Timeout; @types/node pollutes global
+    private cacheRefreshTimer: number | null = null;
     private pendingCacheRefreshPaths = new Set<string>();
     private forceFullCacheRefresh = false;
 
-    async onload() {
+    onload(): void {
+        void (async () => {
         await this.loadSettings();
 
         // Register the glossary linker for the read mode.
@@ -424,16 +427,16 @@ export default class LinkerPlugin extends Plugin {
         // earlier makes navigation deterministic for both read mode and live
         // preview widgets.
         // ----------------------------------------------------------------
-        this.registerDomEvent(document, 'mousedown', (e: MouseEvent) => {
+        this.registerDomEvent(window.document, 'mousedown', (e: MouseEvent) => {
             void handleVirtualLinkClickEvent(this.app, this.highlightService, e);
         }, true /* capture */);
 
         // Delay hover-only affordances so links the pointer merely crosses do
         // not flash their chooser or switch to the stronger underline style.
-        this.registerDomEvent(document, 'mouseover', (e: MouseEvent) => {
+        this.registerDomEvent(window.document, 'mouseover', (e: MouseEvent) => {
             handleVirtualLinkHoverEnterEvent(e);
         }, true /* capture */);
-        this.registerDomEvent(document, 'mouseout', (e: MouseEvent) => {
+        this.registerDomEvent(window.document, 'mouseout', (e: MouseEvent) => {
             handleVirtualLinkHoverLeaveEvent(e);
         }, true /* capture */);
 
@@ -456,7 +459,7 @@ export default class LinkerPlugin extends Plugin {
                 // that were already open in another leaf when the link was clicked).
                 // For freshly opened notes the reading-mode post-processor handles
                 // mark injection; this path handles the tab-switch case.
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
                     if (!view || view.file?.path !== file.path) return;
 
@@ -638,6 +641,7 @@ export default class LinkerPlugin extends Plugin {
             }
         });
 
+        })();
     }
 
     private isPosWithinRange(
@@ -705,10 +709,10 @@ export default class LinkerPlugin extends Plugin {
         }
 
         if (this.cacheRefreshTimer !== null) {
-            clearTimeout(this.cacheRefreshTimer);
+            window.clearTimeout(this.cacheRefreshTimer);
         }
 
-        this.cacheRefreshTimer = setTimeout(() => {
+        this.cacheRefreshTimer = window.setTimeout(() => {
             this.cacheRefreshTimer = null;
 
             const cache = LinkerCache.getInstance(this.app, this.settings);
@@ -748,8 +752,8 @@ export default class LinkerPlugin extends Plugin {
             return false;
         }
 
-        await this.app.fileManager.processFrontMatter(targetFile, (frontMatter) => {
-            const nextTags = new Set(normalizeFrontmatterTags(frontMatter.tags));
+        await this.app.fileManager.processFrontMatter(targetFile, (frontMatter: Record<string, unknown>) => {
+            const nextTags = new Set(normalizeFrontmatterTags((frontMatter as { tags?: unknown }).tags));
             nextTags.add(tagToAdd);
             nextTags.delete(tagToRemove);
             frontMatter.tags = Array.from(nextTags);
@@ -820,7 +824,8 @@ export default class LinkerPlugin extends Plugin {
                                     return;
                                 }
 
-                                const replacement = this.buildRealLink(file as TFile, activeFile.path, text);
+                                if (!(file instanceof TFile)) return;
+                                const replacement = this.buildRealLink(file, activeFile.path, text);
 
                                 const editor = app.workspace.getActiveViewOfType(MarkdownView)?.editor;
                                 const fromEditorPos = editor?.offsetToPos(from);
@@ -837,7 +842,7 @@ export default class LinkerPlugin extends Plugin {
                 }
 
                 // Remove the listener to prevent multiple triggers
-                document.removeEventListener('contextmenu', contextMenuHandler);
+                window.document.removeEventListener('contextmenu', contextMenuHandler);
             };
 
             if (!metaInfo.excludeFile && (metaInfo.includeAllFiles || metaInfo.includeFile || metaInfo.isInIncludedDir)) {
@@ -901,7 +906,7 @@ export default class LinkerPlugin extends Plugin {
             }
 
             // Capture the MouseEvent when the context menu is triggered
-            document.addEventListener('contextmenu', contextMenuHandler, { once: true });
+            window.document.addEventListener('contextmenu', contextMenuHandler, { once: true });
         } else {
             // Check if the directory is in the linker directories
             const dirPath = file.path + '/';
@@ -918,9 +923,9 @@ export default class LinkerPlugin extends Plugin {
                             const target = file;
 
                             // Get the file
-                            const targetFolder = app.vault.getAbstractFileByPath(target.path) as TFolder;
+                            const targetFolder = app.vault.getAbstractFileByPath(target.path);
 
-                            if (!targetFolder) {
+                            if (!(targetFolder instanceof TFolder)) {
                                 console.error('No target folder');
                                 return;
                             }
@@ -944,9 +949,9 @@ export default class LinkerPlugin extends Plugin {
                             const target = file;
 
                             // Get the file
-                            const targetFolder = app.vault.getAbstractFileByPath(target.path) as TFolder;
+                            const targetFolder = app.vault.getAbstractFileByPath(target.path);
 
-                            if (!targetFolder) {
+                            if (!(targetFolder instanceof TFolder)) {
                                 console.error('No target folder');
                                 return;
                             }
@@ -1013,7 +1018,7 @@ export default class LinkerPlugin extends Plugin {
 
         if (attempt >= MAX_ATTEMPTS) return;
 
-        setTimeout(() => {
+        window.setTimeout(() => {
             // Find the view that holds this file regardless of focus state.
             let view: MarkdownView | null = null;
             this.app.workspace.iterateAllLeaves(leaf => {
@@ -1072,7 +1077,7 @@ export default class LinkerPlugin extends Plugin {
 
     onunload() {
         if (this.cacheRefreshTimer !== null) {
-            clearTimeout(this.cacheRefreshTimer);
+            window.clearTimeout(this.cacheRefreshTimer);
             this.cacheRefreshTimer = null;
         }
         this.pendingCacheRefreshPaths.clear();
@@ -1081,14 +1086,14 @@ export default class LinkerPlugin extends Plugin {
     }
 
     async loadSettings() {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<LinkerPluginSettings>);
 
         // Obsidian does not expose link-format settings via a public API, so we read app.json directly.
         try {
             const fileContent = await this.app.vault.adapter.read(this.app.vault.configDir + '/app.json');
-            const appSettings = JSON.parse(fileContent);
+            const appSettings = JSON.parse(fileContent) as { useMarkdownLinks?: boolean; newLinkFormat?: string };
             this.settings.defaultUseMarkdownLinks = appSettings.useMarkdownLinks ?? false;
-            this.settings.defaultLinkFormat = appSettings.newLinkFormat ?? 'shortest';
+            this.settings.defaultLinkFormat = (appSettings.newLinkFormat as LinkerPluginSettings['defaultLinkFormat']) ?? 'shortest';
         } catch (e) {
             console.warn('[Virtual Autolink] Could not read Obsidian app.json settings, using defaults.', e);
         }

@@ -16,7 +16,7 @@ export class ExternalUpdateManager {
 
     update(): void {
         // Timeout to make sure the cache is updated
-        setTimeout(() => {
+        window.setTimeout(() => {
             for (const callback of this.registeredCallbacks) {
                 callback();
             }
@@ -175,11 +175,11 @@ export class PrefixTree {
         this.mapFilePathToLeaveNodes.set(path, [node, ...(this.mapFilePathToLeaveNodes.get(path) ?? [])]);
     }
 
-    private static isNoneEmptyString(value: string | null | undefined): value is string {
+    private static isNoneEmptyString(this: void, value: string | null | undefined): value is string {
         return value !== null && value !== undefined && typeof value === 'string' && value.trim().length > 0;
     }
 
-    private static normalizeFrontmatterStringList(value: unknown): string[] {
+    private static normalizeFrontmatterStringList(this: void, value: unknown): string[] {
         if (typeof value === 'string') {
             const normalizedValue = value.trim();
             return normalizedValue.length > 0 ? [normalizedValue] : [];
@@ -195,7 +195,7 @@ export class PrefixTree {
             .filter(PrefixTree.isNoneEmptyString);
     }
 
-    private static isUpperCaseString(value: string | null | undefined, upperCasePart = 0.75) {
+    private static isUpperCaseString(this: void, value: string | null | undefined, upperCasePart = 0.75) {
         if (!PrefixTree.isNoneEmptyString(value)) {
             return false;
         }
@@ -419,7 +419,7 @@ export class PrefixTree {
             // If files are provided, only update the provided files
             files = updateFiles
                 .map((f) => (f ? this.app.vault.getAbstractFileByPath(f) : null))
-                .filter((f) => f !== null && f instanceof TFile) as TFile[];
+                .filter((f): f is TFile => f !== null && f instanceof TFile);
         }
 
         for (const file of files) {

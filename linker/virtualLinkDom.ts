@@ -21,27 +21,27 @@ export class VirtualMatch {
     // DOM methods
     /////////////////////////////////////////////////
 
-    getCompleteLinkElement(highlightText: string | null = null, extraClasses: string[] = []) {
-        const span = this.getLinkRootSpan(extraClasses);
+    getCompleteLinkElement(highlightText: string | null = null, extraClasses: string[] = [], ownerDoc: Document = document) {
+        const span = this.getLinkRootSpan(extraClasses, ownerDoc);
         const firstPath = this.files.length > 0 ? this.files[0].path : '';
-        const primaryLink = this.getLinkAnchorElement(this.originText, firstPath, highlightText);
+        const primaryLink = this.getLinkAnchorElement(this.originText, firstPath, highlightText, ownerDoc);
         if (this.files.length > 1) {
             primaryLink.setAttribute('data-open-all-paths', JSON.stringify(this.files.map((file) => file.path)));
         }
         span.appendChild(primaryLink);
         if (this.files.length > 1) {
-            span.appendChild(this.getMultipleReferencesSpan());
+            span.appendChild(this.getMultipleReferencesSpan(ownerDoc));
         }
 
         if (!this.isSubWord || !this.settings.suppressSuffixForSubWords) {
-            const icon = this.getIconSpan();
+            const icon = this.getIconSpan(ownerDoc);
             if (icon) span.appendChild(icon);
         }
         return span;
     }
 
-    getLinkAnchorElement(linkText: string, href: string, highlightText: string | null = null) {
-        const link = document.createElement('a');
+    getLinkAnchorElement(linkText: string, href: string, highlightText: string | null = null, ownerDoc: Document = document) {
+        const link = ownerDoc.createElement('a');
         link.href = href;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
@@ -57,24 +57,24 @@ export class VirtualMatch {
         }
 
         if (highlightMatch.index > 0) {
-            link.appendChild(document.createTextNode(linkText.slice(0, highlightMatch.index)));
+            link.appendChild(ownerDoc.createTextNode(linkText.slice(0, highlightMatch.index)));
         }
 
-        const mark = document.createElement('span');
+        const mark = ownerDoc.createElement('span');
         mark.classList.add('virtual-autolink-highlight');
         mark.textContent = highlightMatch.matchText;
         link.appendChild(mark);
 
         const afterIndex = highlightMatch.index + highlightMatch.matchText.length;
         if (afterIndex < linkText.length) {
-            link.appendChild(document.createTextNode(linkText.slice(afterIndex)));
+            link.appendChild(ownerDoc.createTextNode(linkText.slice(afterIndex)));
         }
 
         return link;
     }
 
-    getOpenAllAnchorElement() {
-        const link = document.createElement('a');
+    getOpenAllAnchorElement(ownerDoc: Document = document) {
+        const link = ownerDoc.createElement('a');
         link.href = this.files[0]?.path ?? '';
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
@@ -86,8 +86,8 @@ export class VirtualMatch {
         return link;
     }
 
-    getLinkRootSpan(extraClasses: string[] = []) {
-        const span = document.createElement('span');
+    getLinkRootSpan(extraClasses: string[] = [], ownerDoc: Document = document) {
+        const span = ownerDoc.createElement('span');
         span.classList.add('glossary-entry', 'virtual-link', 'virtual-link-span');
         if (extraClasses.length > 0) {
             span.classList.add(...extraClasses);
@@ -98,39 +98,39 @@ export class VirtualMatch {
         return span;
     }
 
-    getMultipleReferencesSpan() {
-        const spanReferences = document.createElement('span');
+    getMultipleReferencesSpan(ownerDoc: Document = document) {
+        const spanReferences = ownerDoc.createElement('span');
         if (!this.settings.alwaysShowMultipleReferences) {
             spanReferences.classList.add('multiple-files-references');
         }
 
-        const items: HTMLAnchorElement[] = [this.getOpenAllAnchorElement()];
+        const items: HTMLAnchorElement[] = [this.getOpenAllAnchorElement(ownerDoc)];
         this.files.forEach((file, index) => {
-            items.push(this.getLinkAnchorElement(` ${index + 1} `, file.path));
+            items.push(this.getLinkAnchorElement(` ${index + 1} `, file.path, null, ownerDoc));
         });
 
-        const openingBracket = document.createElement('span');
+        const openingBracket = ownerDoc.createElement('span');
         openingBracket.textContent = this.isSubWord ? '[' : ' [';
         spanReferences.appendChild(openingBracket);
 
         items.forEach((item, index) => {
             spanReferences.appendChild(item);
             if (index < items.length - 1) {
-                spanReferences.appendChild(document.createTextNode('|'));
+                spanReferences.appendChild(ownerDoc.createTextNode('|'));
             }
         });
 
-        const closingBracket = document.createElement('span');
+        const closingBracket = ownerDoc.createElement('span');
         closingBracket.textContent = ']';
         spanReferences.appendChild(closingBracket);
 
         return spanReferences;
     }
 
-    getIconSpan() {
+    getIconSpan(ownerDoc: Document = document) {
         const suffix = this.isAlias ? this.settings.virtualLinkAliasSuffix : this.settings.virtualLinkSuffix;
         if ((suffix?.length ?? 0) > 0) {
-            const icon = document.createElement('sup');
+            const icon = ownerDoc.createElement('sup');
             icon.textContent = suffix;
             icon.classList.add('linker-suffix-icon');
             return icon;
@@ -142,7 +142,7 @@ export class VirtualMatch {
     // Filter and sort methods
     /////////////////////////////////////////////////
 
-    static compare(a: VirtualMatch, b: VirtualMatch): number {
+    static compare(this: void, a: VirtualMatch, b: VirtualMatch): number {
         if (a.from === b.from) {
             if (b.to == a.to) {
                 return b.files.length - a.files.length;
