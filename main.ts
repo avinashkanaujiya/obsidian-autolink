@@ -1,4 +1,4 @@
-import { App, EditorPosition, EventRef, Keymap, MarkdownView, Menu, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { App, EditorPosition, EventRef, Keymap, MarkdownView, Menu, Platform, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 
 import { GlossaryLinker } from './linker/readModeLinker';
 import { liveLinkerPlugin } from './linker/liveLinker';
@@ -160,6 +160,7 @@ function isMarkdownFileOrFolder(file: TAbstractFile): boolean {
 
 type VirtualLinkTarget = {
     getAttribute(name: string): string | null;
+    setAttribute(name: string, value: string): void;
 };
 
 type ClosestCapableElement = {
@@ -301,7 +302,18 @@ export function registerInitialMetadataCacheRefresh(
 }
 
 export function handleVirtualLinkHoverEnterEvent(requireModifier: boolean, e: MouseEvent): void {
-    if (requireModifier && !Keymap.isModEvent(e)) return;
+    if (requireModifier && !Keymap.isModEvent(e)) {
+        // Gate closed: only block Page Preview for our own candidate links.
+        // Other wiki links must continue to bubble so their previews work.
+        if (resolveVirtualLinkHoverElement(e.target)) {
+            // Stop the mouseover from reaching hover-driven previews (Obsidian's
+            // Page Preview and similar) so no popup is shown. The browser's
+            // native tooltip and CSS :hover are not affected because they are
+            // driven by pointer position, not JS event propagation.
+            e.stopPropagation();
+        }
+        return;
+    }
 
     const hoverElement = resolveVirtualLinkHoverElement(e.target);
     if (!hoverElement) {
@@ -360,7 +372,9 @@ export async function handleVirtualLinkClickEvent(
     }
 
     const openAllPaths = Array.from(new Set(parseVirtualLinkPaths(target.getAttribute('data-open-all-paths'))));
-    const href = target.getAttribute('href');
+    // Prefer data-real-href because the visible href may be the blocked sentinel
+    // (see BLOCKED_HREF in virtualLinkDom.ts) when the modifier gate is on.
+    const href = target.getAttribute('data-real-href') || target.getAttribute('href');
     const targetPaths = openAllPaths.length > 0
         ? openAllPaths
         : (href ? [href] : []);

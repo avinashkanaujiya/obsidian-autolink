@@ -41,6 +41,28 @@ duplicating platform detection logic.
   `.virtual-link-span` classes are reused.
 - New keybindings or context-menu entries. The modifier is the
   activation gate, not a separate action.
+- Replacing Obsidian's Page Preview with a custom preview. The
+  stopPropagation approach piggybacks on the existing preview pipeline.
+
+## Page preview extension
+
+The original change gated clicks and the multiple-references
+chooser, but Obsidian's Page Preview (and similar hover-driven
+previews) still fired on standalone hover because the link's
+`href` pointed at a real file. The first attempt at an extension
+used an href-swap trick (render with a blocked sentinel, restore
+on modifier), but the sentinel still resolved to a non-existent
+file, so Page Preview displayed an "unable to find" popup.
+
+The current approach stops the `mouseover` event itself: when
+the gate is on, the modifier is not held, and the target resolves
+to a candidate link, `handleVirtualLinkHoverEnterEvent` calls
+`e.stopPropagation()` before Page Preview's own bubble-phase
+listener fires. The real `href` stays on the link so the browser
+tooltip is informative, and the gate check is scoped to
+candidate links so other wiki links are unaffected. The browser
+tooltip and CSS `:hover` are driven by pointer position rather
+than JS event propagation, so they still work.
 
 ## Decisions
 
@@ -77,9 +99,11 @@ duplicating platform detection logic.
   one toggle away.
 - [The hover guard must run before the
   `setTimeout` schedules the active class] → guard at the very
-  top of `handleVirtualLinkHoverEnterEvent`, after the
-  `resolveVirtualLinkHoverElement` null-check, so the timer never
-  starts when the gate is closed.
+  top of `handleVirtualLinkHoverEnterEvent`. The current
+  implementation calls `resolveVirtualLinkHoverElement` *inside*
+  the gate branch to scope `stopPropagation` to candidate links
+  only; non-candidate targets still return early without
+  stopping the event, so other wiki links keep their previews.
 - [Live preview and reading mode share the same global handler] →
   no special-casing required; the guard sits above the
   `resolveVirtualLinkTarget` branch, so both rendering paths are

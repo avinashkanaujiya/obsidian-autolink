@@ -358,6 +358,7 @@ describe('handleVirtualLink hover activation', () => {
                 relatedTarget: null,
                 metaKey: false,
                 ctrlKey: false,
+                stopPropagation: jest.fn(),
             } as unknown as MouseEvent;
 
             handleVirtualLinkHoverEnterEvent(true, event);
@@ -409,6 +410,67 @@ describe('handleVirtualLink hover activation', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+
+    it('stops mouseover propagation when the modifier gate is on and no modifier is held', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const event = {
+                target: makeHoverTarget(root),
+                relatedTarget: null,
+                metaKey: false,
+                ctrlKey: false,
+                stopPropagation: jest.fn(),
+            } as unknown as MouseEvent;
+
+            handleVirtualLinkHoverEnterEvent(true, event);
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
+
+            expect((event as unknown as { stopPropagation: jest.Mock }).stopPropagation).toHaveBeenCalled();
+            // No class added because the handler returned early after stopPropagation.
+            expect(classes.has('virtual-link-hover-active')).toBe(false);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('does not stop mouseover when the modifier gate is on and the modifier is held', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const event = {
+                target: makeHoverTarget(root),
+                relatedTarget: null,
+                metaKey: true,
+                ctrlKey: false,
+                stopPropagation: jest.fn(),
+            } as unknown as MouseEvent;
+
+            handleVirtualLinkHoverEnterEvent(true, event);
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
+
+            expect((event as unknown as { stopPropagation: jest.Mock }).stopPropagation).not.toHaveBeenCalled();
+            expect(classes.has('virtual-link-hover-active')).toBe(true);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('does not stop mouseover for non-candidate-link targets', () => {
+        const event = {
+            target: { closest: () => null },
+            relatedTarget: null,
+            metaKey: false,
+            ctrlKey: false,
+            stopPropagation: jest.fn(),
+        } as unknown as MouseEvent;
+
+        handleVirtualLinkHoverEnterEvent(true, event);
+
+        expect((event as unknown as { stopPropagation: jest.Mock }).stopPropagation).not.toHaveBeenCalled();
     });
 });
 
@@ -716,6 +778,40 @@ describe('handleVirtualLinkClickEvent', () => {
         await handleVirtualLinkClickEvent(app as any, highlightService as any, true, event);
 
         expect(highlightService.setPending).toHaveBeenCalledWith('Notes/Target.md', 'Target');
+        expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', true);
+    });
+
+    it('reads data-real-href when present, ignoring the blocked href sentinel', async () => {
+        const app = {
+            workspace: {
+                getActiveFile: () => makeFile('Notes/Source.md'),
+                openLinkText: jest.fn(async () => undefined),
+            },
+        };
+        const highlightService = { setPending: jest.fn() };
+
+        const anchor = {
+            getAttribute: (name: string) => {
+                if (name === 'data-real-href') return 'Notes/Target.md';
+                if (name === 'href') return '#__virtual_autolink_blocked__';
+                if (name === 'origin-text') return 'Target';
+                return null;
+            },
+        };
+
+        const event = {
+            button: 0,
+            metaKey: true,
+            ctrlKey: false,
+            target: {
+                closest: (selector: string) => selector === '.virtual-link-a' ? anchor : null,
+            },
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        } as unknown as MouseEvent;
+
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, true, event);
+
         expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', true);
     });
 });

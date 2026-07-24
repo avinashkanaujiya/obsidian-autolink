@@ -80,3 +80,40 @@ The modifier gate SHALL apply to every candidate link the plugin renders, regard
 - **WHEN** the user clicks or hovers a non-virtual internal link
 - **THEN** the gate SHALL NOT apply
 - **AND** Obsidian's default link behaviour SHALL be preserved
+
+### Requirement: Page preview is also gated by the modifier
+
+When the modifier gate is on, the plugin SHALL block hover-driven file previews (Obsidian's Page Preview and similar) on candidate links by stopping the `mouseover` event from reaching those preview handlers. The real href SHALL remain on the link so the browser tooltip stays informative.
+
+#### Scenario: Gate-closed hover stops the mouseover for candidate links
+- **WHEN** the user moves the pointer over a candidate link with the gate on
+- **AND** the platform modifier key is not held
+- **THEN** the plugin SHALL call `e.stopPropagation()` on the mouseover event
+- **AND** hover-driven previews SHALL NOT fire because their listeners never see the event
+
+#### Scenario: Gate-open hover lets the mouseover bubble for candidate links
+- **WHEN** the user moves the pointer over a candidate link with the gate on
+- **AND** the platform modifier key is held
+- **THEN** the plugin SHALL NOT call `e.stopPropagation()` on the mouseover event
+- **AND** hover-driven previews SHALL fire normally and resolve the file via the real `href`
+
+#### Scenario: Gate off lets every mouseover bubble
+- **WHEN** the user moves the pointer over a candidate link with the gate off
+- **THEN** the plugin SHALL NOT call `e.stopPropagation()` on the mouseover event
+- **AND** hover-driven previews SHALL fire normally
+
+#### Scenario: Non-candidate-link hovers are never stopped
+- **WHEN** the user hovers any element that is not a candidate link
+- **THEN** the plugin SHALL NOT call `e.stopPropagation()` regardless of the gate or modifier state
+- **AND** Obsidian's default hover behaviour (including Page Preview for real wiki links) SHALL be preserved
+
+#### Scenario: Browser tooltip is not affected by stopPropagation
+- **WHEN** the plugin stops the mouseover for a candidate link with the gate on
+- **THEN** the browser's native tooltip and CSS `:hover` pseudo-class SHALL still reflect the candidate link
+- **AND** only JS event listeners (like Page Preview) SHALL be blocked
+
+#### Scenario: Real href is always rendered
+- **WHEN** the plugin renders a candidate link (gate on or off)
+- **THEN** the link's `href` attribute SHALL be the real target path
+- **AND** the browser tooltip SHALL show the real file path
+

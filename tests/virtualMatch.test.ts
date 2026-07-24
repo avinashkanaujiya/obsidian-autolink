@@ -107,7 +107,15 @@ function createMockElement(tagName: string): MockElement {
             element.attributes[name] = value;
         },
         getAttribute: (name: string) => element.attributes[name] ?? null,
-    } as MockElement;
+    } as unknown as MockElement & { href: string };
+
+    // Mirror the real DOM behaviour where `link.href = ...` writes through to
+    // the href attribute (the production code uses the property form).
+    Object.defineProperty(element, 'href', {
+        get: () => element.attributes.href ?? '',
+        set: (value: string) => { element.attributes.href = value; },
+        configurable: true,
+    });
 
     return element;
 }
@@ -271,6 +279,14 @@ describe('VirtualMatch DOM rendering', () => {
         const root = match.getCompleteLinkElement(null, ['cm-highlight', 'cm-strikethrough']) as unknown as MockElement;
 
         expect(root.classNames).toEqual(expect.arrayContaining(['cm-highlight', 'cm-strikethrough']));
+    });
+
+    it('renders the real href on the primary link regardless of the modifier gate', () => {
+        const match = makeMatch(0, 0, 5, [makeFile('Notes/Target.md')], { ...BASE_SETTINGS, requireModifierForCandidateLinks: true });
+        const root = match.getCompleteLinkElement() as unknown as MockElement;
+        const primaryLink = root.children[0] as MockElement;
+
+        expect(primaryLink.getAttribute('href')).toBe('Notes/Target.md');
     });
 });
 

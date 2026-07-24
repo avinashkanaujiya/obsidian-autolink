@@ -29,4 +29,19 @@
 
 - [x] 5.1 Run `npm run build` (or the project's documented build command) and confirm a clean `dist/`
 - [x] 5.2 Copy `dist/` into `$OBSIDIAN_VAULT/$OBSIDIAN_VAULT_DOTFILES/plugins/virtual-autolink/` (or the current plugin id) for MacBook smoke testing
-- [ ] 5.3 Manually verify in Obsidian: standalone click does nothing, modifier-click opens, standalone hover is silent, modifier-hover reveals the chooser, and the new settings tab toggle flips the behaviour
+- [x] 5.3 Manually verify in Obsidian: standalone click does nothing, modifier-click opens, standalone hover is silent, modifier-hover reveals the chooser, and the new settings tab toggle flips the behaviour
+
+## 6. Page preview gating (extension)
+
+- [x] 6.1 Drop the href-swap approach in `linker/virtualLinkDom.ts`: remove `BLOCKED_HREF`, `data-real-href`, and the gated `href` swap; links always render with the real href so the browser tooltip is informative
+- [x] 6.2 Drop the href-swap helpers (`setCandidateLinkHrefState`, `refreshAllCandidateLinkHrefs`, `isModifierKeyEvent`), the second capture-phase `mouseover` handler, and the `keydown`/`keyup` handlers in `main.ts`; remove the `Platform` import
+- [x] 6.3 Add `e.stopPropagation()` to `handleVirtualLinkHoverEnterEvent` when the gate is on, the modifier is not held, and the target resolves to a candidate link — this stops Page Preview's own mouseover listener from firing without affecting other wiki links, the browser tooltip, or CSS `:hover`
+- [x] 6.4 Revert `handleVirtualLinkClickEvent` to read `href` directly (no `data-real-href` fallback needed since the href is always the real path)
+- [x] 6.5 Update `tests/main.test.ts` hover tests so the event mock includes `stopPropagation: jest.fn()` (the gate path now calls it) and add three new cases: stopPropagation is called when gate is on and no modifier, is not called when modifier is held, and is not called for non-candidate-link targets
+- [x] 6.6 Update `tests/virtualMatch.test.ts` to assert the real href is rendered regardless of the gate (no more blocked-sentinel assertions), keeping the mock element's `href` getter/setter
+- [x] 6.7 Run `npm test` and `npm run build`; install to vault for MacBook smoke testing
+
+## 7. Page preview manual smoke
+
+- [ ] 7.1 Manually verify in Obsidian: standalone hover on a candidate link shows NO popup (no "unable to find", no preview); modifier-held hover triggers Page Preview normally; other wiki links continue to show previews on standalone hover
+

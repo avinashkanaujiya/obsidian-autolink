@@ -19,11 +19,17 @@ restore the old "no modifier required" behaviour.
     do nothing (no navigation, no highlight registration).
   - Standalone hovers do not add the `virtual-link-hover-active` class
     and do not show the multiple-references chooser or suffix icon.
+  - Standalone hovers also do not trigger Obsidian's Page Preview
+    (or similar hover-driven previews) — the plugin stops the
+    `mouseover` event from reaching those listeners, scoped to
+    candidate links only. The real `href` stays on the link so the
+    browser tooltip is informative.
   - Clicks and hovers only take effect when the platform modifier key
     is pressed (Cmd on macOS, Ctrl elsewhere). This is read from the
     existing `Keymap.isModEvent` helper.
 - When the setting is `false`, behaviour is unchanged from today
-  (standalone click opens, standalone hover reveals the chooser).
+  (standalone click opens, standalone hover reveals the chooser, and
+  Page Preview fires on hover as before).
 - Surface the toggle on the existing `LinkerSettingTab` so the user
   can flip it without editing JSON.
 
@@ -43,10 +49,19 @@ restore the old "no modifier required" behaviour.
 ## Impact
 
 - `main.ts` — new setting field, new default in `DEFAULT_SETTINGS`,
-  guard at the top of `handleVirtualLinkClickEvent` and
-  `handleVirtualLinkHoverEnterEvent`, and a toggle in
+  guard at the top of `handleVirtualLinkClickEvent` (preventDefault
+  to stop the native click), guard at the top of
+  `handleVirtualLinkHoverEnterEvent` (stopPropagation to block
+  Page Preview, scoped to candidate links), capture-phase `click`
+  safety-net for CodeMirror live preview, and a toggle in
   `LinkerSettingTab.display()`.
+- `linker/virtualLinkDom.ts` — no change. Candidate links render
+  with the real `href`; the gate is enforced by event handlers
+  in `main.ts`.
 - `tests/main.test.ts` — extend the existing hover-class tests to
-  cover the modifier-gated and toggle-off paths.
+  cover the modifier-gated and toggle-off paths; new tests for
+  the click no-op, click with modifier, and `stopPropagation`
+  semantics (only on candidate links, only when gate is on, only
+  when modifier is not held).
 - No new dependencies. Uses the already-imported `Keymap.isModEvent`
   helper from `obsidian`.

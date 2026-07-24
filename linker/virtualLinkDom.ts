@@ -75,7 +75,8 @@ export class VirtualMatch {
 
     getOpenAllAnchorElement(ownerDoc: Document = document) {
         const link = ownerDoc.createElement('a');
-        link.href = this.files[0]?.path ?? '';
+        const firstPath = this.files[0]?.path ?? '';
+        link.href = firstPath;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.setAttribute('origin-text', this.originText);
