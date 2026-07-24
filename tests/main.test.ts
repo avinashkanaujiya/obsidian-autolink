@@ -223,7 +223,6 @@ describe('LinkerPlugin.scheduleCacheRefresh', () => {
             app: unknown;
             settings: LinkerPluginSettings;
             updateManager: { update: jest.Mock };
-            rerenderReadingViews: jest.Mock;
             cacheRefreshTimer: ReturnType<typeof setTimeout> | null;
             pendingCacheRefreshPaths: Set<string>;
             forceFullCacheRefresh: boolean;
@@ -233,7 +232,6 @@ describe('LinkerPlugin.scheduleCacheRefresh', () => {
         plugin.app = {};
         plugin.settings = { ...BASE_SETTINGS };
         plugin.updateManager = { update: jest.fn() };
-        plugin.rerenderReadingViews = jest.fn();
         plugin.cacheRefreshTimer = null;
         plugin.pendingCacheRefreshPaths = new Set<string>();
         plugin.forceFullCacheRefresh = false;
@@ -249,8 +247,6 @@ describe('LinkerPlugin.scheduleCacheRefresh', () => {
         jest.spyOn(LinkerCache, 'getInstance').mockReturnValue({
             rebuildCache,
             updateFiles,
-            isCacheDirty: jest.fn().mockReturnValue(true),
-            clearCacheDirty: jest.fn(),
         } as unknown as LinkerCache);
 
         plugin.scheduleCacheRefresh(['Notes/Alpha.md', 'Notes/Beta.md']);
@@ -258,7 +254,6 @@ describe('LinkerPlugin.scheduleCacheRefresh', () => {
 
         expect(updateFiles).toHaveBeenCalledWith(['Notes/Alpha.md', 'Notes/Beta.md']);
         expect(rebuildCache).not.toHaveBeenCalled();
-        expect(plugin.rerenderReadingViews).toHaveBeenCalled();
         expect(plugin.updateManager.update).toHaveBeenCalled();
     });
 
@@ -271,8 +266,6 @@ describe('LinkerPlugin.scheduleCacheRefresh', () => {
         jest.spyOn(LinkerCache, 'getInstance').mockReturnValue({
             rebuildCache,
             updateFiles,
-            isCacheDirty: jest.fn().mockReturnValue(true),
-            clearCacheDirty: jest.fn(),
         } as unknown as LinkerCache);
 
         plugin.scheduleCacheRefresh(['Notes/Alpha.md']);

@@ -771,21 +771,8 @@ export default class LinkerPlugin extends Plugin {
                 cache.updateFiles(pendingPaths);
             }
 
-            if (cache.isCacheDirty()) {
-                this.rerenderReadingViews();
-                cache.clearCacheDirty();
-            }
             this.updateManager.update();
         }, 75);
-    }
-
-    private rerenderReadingViews(): void {
-        this.app.workspace.iterateAllLeaves((leaf) => {
-            if (!(leaf.view instanceof MarkdownView) || leaf.view.getMode() !== 'preview') {
-                return;
-            }
-            leaf.view.previewMode.rerender(true);
-        });
     }
 
     private async updateFileTags(targetFile: TFile, tagToAdd: string, tagToRemove: string): Promise<boolean> {

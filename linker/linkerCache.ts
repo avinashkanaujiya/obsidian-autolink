@@ -70,10 +70,6 @@ export class PrefixTree {
     mapIndexedFilePathsToUpdateTime: Map<string, number> = new Map();
     mapFilePathToLeaveNodes: Map<string, PrefixNode[]> = new Map();
 
-    // ponytail: single dirty flag over per-file tracking — catches the vast
-    // majority of unnecessary rerenders with one bool.
-    dirty = false;
-
     // ponytail: fingerprint linking-relevant metadata per file so frontmatter
     // edits that don't change terms (e.g., highlight annotations) skip tree
     // mutation entirely.  String key = stable hash of basename + aliases +
@@ -91,7 +87,6 @@ export class PrefixTree {
         this.setIndexedFilePaths.clear();
         this.mapIndexedFilePathsToUpdateTime.clear();
         this.mapFilePathToLeaveNodes.clear();
-        this.dirty = false;
         this.linkingFingerprints.clear();
     }
 
@@ -330,7 +325,6 @@ export class PrefixTree {
         });
 
         this.linkingFingerprints.set(path, fingerprint);
-        this.dirty = true;
     }
 
     private computeLinkingFingerprint(file: TFile, metaInfo: LinkerFileMetaInfo, metadata: ReturnType<App['metadataCache']['getFileCache']>): string {
@@ -390,8 +384,6 @@ export class PrefixTree {
 
         // Remove the update time of the file
         this.mapIndexedFilePathsToUpdateTime.delete(path);
-
-        this.dirty = true;
     }
 
     private fileIsUpToDate(file: TFile) {
@@ -564,14 +556,6 @@ export class LinkerCache {
 
     clearCache() {
         this.cache.clear();
-    }
-
-    isCacheDirty(): boolean {
-        return this.cache.dirty;
-    }
-
-    clearCacheDirty(): void {
-        this.cache.dirty = false;
     }
 
     rebuildCache() {

@@ -1,20 +1,24 @@
-## Requirements
+## REMOVED Requirements
 
-### Requirement: Prefix tree skips update when linking metadata is unchanged
+### Requirement: Prefix tree tracks whether it was modified
 
-The `PrefixTree` SHALL store a fingerprint of each file's linking-relevant metadata (basename, aliases, custom field values, case-sensitivity tags, directory inclusion) and skip tree mutation in `addFileToTree()` when the fingerprint matches the previously stored value.
+**Reason**: With `scheduleCacheRefresh()` no longer rerendering reading-mode views (see the new "Reading-mode views never rerender from the cache refresh path" requirement), no consumer reads `PrefixTree.dirty`. The flag and the related `LinkerCache` dirty API become dead code.
 
-#### Scenario: Fingerprint matches — skip mutation
-- **WHEN** `addFileToTree()` is called for a file whose linking metadata fingerprint is identical to the stored fingerprint
-- **THEN** the method SHALL return early without calling `removeFileFromTree()` or `addFileWithName()`
+**Migration**: None. The `dirty` field, `LinkerCache.isCacheDirty()`, and `LinkerCache.clearCacheDirty()` are removed outright. Callers — only `LinkerPlugin.scheduleCacheRefresh()` — no longer reference them.
 
-#### Scenario: Fingerprint differs — proceed with mutation
-- **WHEN** `addFileToTree()` is called for a file whose linking metadata fingerprint differs from the stored fingerprint
-- **THEN** the method SHALL proceed with `removeFileFromTree()` and `addFileWithName()`
+### Requirement: LinkerCache exposes dirty status
 
-#### Scenario: Fingerprint map cleared on rebuild
-- **WHEN** `PrefixTree.clear()` is called (as part of `rebuildCache()`)
-- **THEN** the fingerprint map SHALL be cleared
+**Reason**: Same as above — the dirty API has no callers after the rerender path is removed.
+
+**Migration**: None. The `isCacheDirty()` and `clearCacheDirty()` methods are deleted from `LinkerCache`.
+
+### Requirement: Reading-mode views rerender only when cache was modified
+
+**Reason**: The user has decided that reading-mode tabs should never be auto-rerendered from the cache-refresh path. Rerendering on a large note can reset scroll and disorient the reader; users who want a fresh render can close and reopen the tab, or trigger Obsidian's manual reparse. Gating rerenders behind a dirty flag (the previous behavior) is no longer the desired policy.
+
+**Migration**: Replaced by the new requirement below. The `rerenderReadingViews()` method in `LinkerPlugin` is deleted. Live-preview behavior is unchanged — `updateManager.update()` still fires on every cache refresh, so CM6 decorations stay in sync.
+
+## ADDED Requirements
 
 ### Requirement: Reading-mode views never rerender from the cache refresh path
 
