@@ -16,6 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_SRC="$SCRIPT_DIR"
 PLUGIN_ID="virtual-autolink"
+PLUGINS_DIR=".obsidian"
 
 # Default vault location — override with --vault
 DEFAULT_VAULT="$HOME/obsidian/notes"
@@ -68,9 +69,11 @@ usage() {
 Usage: ${0##*/} [options]
 
 Options:
-  -w, --watch            Watch mode: rebuild and reinstall on every source change
-  -v, --vault <path>     Override vault path (default: $DEFAULT_VAULT)
-  -h, --help             Show this help message
+  -w, --watch                  Watch mode: rebuild and reinstall on every source change
+  -v, --vault <path>           Override vault path (default: $DEFAULT_VAULT)
+      --plugins-dir <name>     Vault dotfiles dir containing plugins/ (default: $PLUGINS_DIR)
+      --plugin-id <id>         Plugin folder name under plugins/ (default: $PLUGIN_ID)
+  -h, --help                   Show this help message
 
 EOF
 }
@@ -82,12 +85,14 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -w|--watch)        WATCH=1; shift ;;
         -v|--vault)        VAULT="${2:?--vault requires a path}"; shift 2 ;;
+        --plugins-dir)     PLUGINS_DIR="${2:?--plugins-dir requires a name}"; shift 2 ;;
+        --plugin-id)       PLUGIN_ID="${2:?--plugin-id requires an id}"; shift 2 ;;
         -h|--help)         usage; exit 0 ;;
         *) print_error "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
-INSTALL_DIR="$VAULT/.obsidian/plugins/$PLUGIN_ID"
+INSTALL_DIR="$VAULT/$PLUGINS_DIR/plugins/$PLUGIN_ID"
 
 # ── Validation ───────────────────────────────────────────────────────────────
 
@@ -97,8 +102,8 @@ validate_env() {
         exit 1
     fi
 
-    if [[ ! -d "$VAULT/.obsidian" ]]; then
-        print_error "Vault not found: $VAULT"
+    if [[ ! -d "$VAULT/$PLUGINS_DIR" ]]; then
+        print_error "Vault not found: $VAULT (missing $PLUGINS_DIR/)"
         print_error "Pass a different path with: --vault /path/to/vault"
         exit 1
     fi

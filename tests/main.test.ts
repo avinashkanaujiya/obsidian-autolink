@@ -47,6 +47,7 @@ const BASE_SETTINGS: LinkerPluginSettings = {
     includeAliases: true,
     customFrontmatterFields: [],
     alwaysShowMultipleReferences: false,
+    requireModifierForCandidateLinks: false,
 };
 
 function makeFile(path: string): TFile {
@@ -294,7 +295,7 @@ describe('handleVirtualLink hover activation', () => {
                 relatedTarget: null,
             } as unknown as MouseEvent;
 
-            handleVirtualLinkHoverEnterEvent(event);
+            handleVirtualLinkHoverEnterEvent(false, event);
             expect(classes.has('virtual-link-hover-active')).toBe(false);
 
             jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS - 1);
@@ -314,7 +315,7 @@ describe('handleVirtualLink hover activation', () => {
             const { root, classes } = makeHoverRoot();
             const target = makeHoverTarget(root);
 
-            handleVirtualLinkHoverEnterEvent({ target, relatedTarget: null } as unknown as MouseEvent);
+            handleVirtualLinkHoverEnterEvent(false, { target, relatedTarget: null } as unknown as MouseEvent);
             handleVirtualLinkHoverLeaveEvent({ target, relatedTarget: null } as unknown as MouseEvent);
 
             jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
@@ -332,7 +333,7 @@ describe('handleVirtualLink hover activation', () => {
             const firstTarget = makeHoverTarget(root);
             const secondTarget = makeHoverTarget(root);
 
-            handleVirtualLinkHoverEnterEvent({ target: firstTarget, relatedTarget: null } as unknown as MouseEvent);
+            handleVirtualLinkHoverEnterEvent(false, { target: firstTarget, relatedTarget: null } as unknown as MouseEvent);
             jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
             expect(classes.has('virtual-link-hover-active')).toBe(true);
 
@@ -340,6 +341,69 @@ describe('handleVirtualLink hover activation', () => {
                 target: firstTarget,
                 relatedTarget: secondTarget,
             } as unknown as MouseEvent);
+
+            expect(classes.has('virtual-link-hover-active')).toBe(true);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('does not activate hover styling when the modifier gate is on and no modifier is held', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const event = {
+                target: makeHoverTarget(root),
+                relatedTarget: null,
+                metaKey: false,
+                ctrlKey: false,
+            } as unknown as MouseEvent;
+
+            handleVirtualLinkHoverEnterEvent(true, event);
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
+
+            expect(classes.has('virtual-link-hover-active')).toBe(false);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('activates hover styling when the modifier gate is on and the modifier is held', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const event = {
+                target: makeHoverTarget(root),
+                relatedTarget: null,
+                metaKey: true,
+                ctrlKey: false,
+            } as unknown as MouseEvent;
+
+            handleVirtualLinkHoverEnterEvent(true, event);
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
+
+            expect(classes.has('virtual-link-hover-active')).toBe(true);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('keeps the legacy standalone hover behaviour when the modifier gate is off', () => {
+        jest.useFakeTimers();
+
+        try {
+            const { root, classes } = makeHoverRoot();
+            const event = {
+                target: makeHoverTarget(root),
+                relatedTarget: null,
+                metaKey: false,
+                ctrlKey: false,
+            } as unknown as MouseEvent;
+
+            handleVirtualLinkHoverEnterEvent(false, event);
+            jest.advanceTimersByTime(VIRTUAL_LINK_HOVER_DELAY_MS);
 
             expect(classes.has('virtual-link-hover-active')).toBe(true);
         } finally {
@@ -377,7 +441,7 @@ describe('handleVirtualLinkClickEvent', () => {
             stopPropagation: jest.fn(),
         } as unknown as MouseEvent;
 
-        await handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, false, event);
 
         expect(highlightService.setPending).toHaveBeenCalledWith('Notes/Target.md', 'Target');
         expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', false);
@@ -423,7 +487,7 @@ describe('handleVirtualLinkClickEvent', () => {
                 stopPropagation: jest.fn(),
             } as unknown as MouseEvent;
 
-            const clickPromise = handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+            const clickPromise = handleVirtualLinkClickEvent(app as any, highlightService as any, false, event);
 
             await Promise.resolve();
 
@@ -480,7 +544,7 @@ describe('handleVirtualLinkClickEvent', () => {
             stopPropagation: jest.fn(),
         } as unknown as MouseEvent;
 
-        await handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, false, event);
 
         expect(highlightService.setPending).toHaveBeenCalledWith('Notes/Target.md', 'Target');
         expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', false);
@@ -524,7 +588,7 @@ describe('handleVirtualLinkClickEvent', () => {
                 stopPropagation: jest.fn(),
             } as unknown as MouseEvent;
 
-            const clickPromise = handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+            const clickPromise = handleVirtualLinkClickEvent(app as any, highlightService as any, false, event);
 
             await Promise.resolve();
 
@@ -574,10 +638,84 @@ describe('handleVirtualLinkClickEvent', () => {
             stopPropagation: jest.fn(),
         } as unknown as MouseEvent;
 
-        await handleVirtualLinkClickEvent(app as any, highlightService as any, event);
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, false, event);
 
         expect(highlightService.setPending).not.toHaveBeenCalled();
         expect(app.workspace.openLinkText).not.toHaveBeenCalled();
         expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when the modifier gate is on and no modifier is held', async () => {
+        const app = {
+            workspace: {
+                getActiveFile: () => makeFile('Notes/Source.md'),
+                openLinkText: jest.fn(async () => undefined),
+            },
+        };
+        const highlightService = {
+            setPending: jest.fn(),
+        };
+
+        const anchor = {
+            getAttribute: (name: string) => {
+                if (name === 'href') return 'Notes/Target.md';
+                if (name === 'origin-text') return 'Target';
+                return null;
+            },
+        };
+
+        const event = {
+            button: 0,
+            metaKey: false,
+            ctrlKey: false,
+            target: {
+                closest: (selector: string) => selector === '.virtual-link-a' ? anchor : null,
+            },
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        } as unknown as MouseEvent;
+
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, true, event);
+
+        expect(highlightService.setPending).not.toHaveBeenCalled();
+        expect(app.workspace.openLinkText).not.toHaveBeenCalled();
+        expect(event.preventDefault).toHaveBeenCalled();
+        expect(event.stopPropagation).toHaveBeenCalled();
+    });
+
+    it('navigates when the modifier gate is on and the modifier is held', async () => {
+        const app = {
+            workspace: {
+                getActiveFile: () => makeFile('Notes/Source.md'),
+                openLinkText: jest.fn(async () => undefined),
+            },
+        };
+        const highlightService = {
+            setPending: jest.fn(),
+        };
+
+        const anchor = {
+            getAttribute: (name: string) => {
+                if (name === 'href') return 'Notes/Target.md';
+                if (name === 'origin-text') return 'Target';
+                return null;
+            },
+        };
+
+        const event = {
+            button: 0,
+            metaKey: true,
+            ctrlKey: false,
+            target: {
+                closest: (selector: string) => selector === '.virtual-link-a' ? anchor : null,
+            },
+            preventDefault: jest.fn(),
+            stopPropagation: jest.fn(),
+        } as unknown as MouseEvent;
+
+        await handleVirtualLinkClickEvent(app as any, highlightService as any, true, event);
+
+        expect(highlightService.setPending).toHaveBeenCalledWith('Notes/Target.md', 'Target');
+        expect(app.workspace.openLinkText).toHaveBeenCalledWith('Notes/Target.md', 'Notes/Source.md', true);
     });
 });

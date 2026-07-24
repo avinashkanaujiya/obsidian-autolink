@@ -38,6 +38,7 @@ const BASE_SETTINGS: LinkerPluginSettings = {
     includeAliases: true,
     alwaysShowMultipleReferences: false,
     customFrontmatterFields: [],
+    requireModifierForCandidateLinks: false,
 };
 
 describe('GlossaryLinker reading-mode formatting support', () => {

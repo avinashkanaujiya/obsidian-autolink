@@ -38,6 +38,7 @@ const BASE_SETTINGS: LinkerPluginSettings = {
     includeAliases: true,
     alwaysShowMultipleReferences: false,
     customFrontmatterFields: [],
+    requireModifierForCandidateLinks: false,
 };
 
 function makeFile(filePath: string): TFile {

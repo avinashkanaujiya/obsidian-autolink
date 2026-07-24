@@ -43,6 +43,7 @@ export interface LinkerPluginSettings {
     includeAliases: boolean;
     customFrontmatterFields: string[];
     alwaysShowMultipleReferences: boolean;
+    requireModifierForCandidateLinks: boolean;
     // wordBoundaryRegex: string;
     // conversionFormat
 }
@@ -83,6 +84,7 @@ const DEFAULT_SETTINGS: LinkerPluginSettings = {
     includeAliases: true,
     customFrontmatterFields: [],
     alwaysShowMultipleReferences: false,
+    requireModifierForCandidateLinks: true,
     // wordBoundaryRegex: '/[\t- !-/:-@\[-`{-~\p{Emoji_Presentation}\p{Extended_Pictographic}]/u',
 };
 
@@ -298,7 +300,9 @@ export function registerInitialMetadataCacheRefresh(
     }
 }
 
-export function handleVirtualLinkHoverEnterEvent(e: MouseEvent): void {
+export function handleVirtualLinkHoverEnterEvent(requireModifier: boolean, e: MouseEvent): void {
+    if (requireModifier && !Keymap.isModEvent(e)) return;
+
     const hoverElement = resolveVirtualLinkHoverElement(e.target);
     if (!hoverElement) {
         return;
@@ -338,12 +342,22 @@ export function handleVirtualLinkHoverLeaveEvent(e: MouseEvent): void {
 export async function handleVirtualLinkClickEvent(
     app: App,
     highlightService: HighlightService,
+    requireModifier: boolean,
     e: MouseEvent,
 ): Promise<void> {
     if (e.button !== 0) return;
 
     const target = resolveVirtualLinkTarget(e.target);
     if (!target) return;
+
+    if (requireModifier && !Keymap.isModEvent(e)) {
+        // Modifier gate is closed: stop the browser and Obsidian from following
+        // the candidate link's href. Without this, the native <a> click still
+        // navigates even though we never call app.workspace.openLinkText.
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
 
     const openAllPaths = Array.from(new Set(parseVirtualLinkPaths(target.getAttribute('data-open-all-paths'))));
     const href = target.getAttribute('href');
@@ -428,13 +442,28 @@ export default class LinkerPlugin extends Plugin {
         // preview widgets.
         // ----------------------------------------------------------------
         this.registerDomEvent(window.document, 'mousedown', (e: MouseEvent) => {
-            void handleVirtualLinkClickEvent(this.app, this.highlightService, e);
+            void handleVirtualLinkClickEvent(this.app, this.highlightService, this.settings.requireModifierForCandidateLinks, e);
+        }, true /* capture */);
+
+        // Safety net for the modifier gate. mousedown preventDefault suppresses
+        // the click in reading mode, but live-preview's CodeMirror widget fires
+        // its own click after handling the mousedown internally — that one slips
+        // past our mousedown listener. A capture-phase click handler catches it
+        // before the native <a> navigation or CodeMirror's link click.
+        this.registerDomEvent(window.document, 'click', (e: MouseEvent) => {
+            if (!this.settings.requireModifierForCandidateLinks) return;
+            if (e.button !== 0) return;
+            if (Keymap.isModEvent(e)) return;
+            const target = resolveVirtualLinkTarget(e.target);
+            if (!target) return;
+            e.preventDefault();
+            e.stopPropagation();
         }, true /* capture */);
 
         // Delay hover-only affordances so links the pointer merely crosses do
         // not flash their chooser or switch to the stronger underline style.
         this.registerDomEvent(window.document, 'mouseover', (e: MouseEvent) => {
-            handleVirtualLinkHoverEnterEvent(e);
+            handleVirtualLinkHoverEnterEvent(this.settings.requireModifierForCandidateLinks, e);
         }, true /* capture */);
         this.registerDomEvent(window.document, 'mouseout', (e: MouseEvent) => {
             handleVirtualLinkHoverLeaveEvent(e);
@@ -1123,6 +1152,16 @@ class LinkerSettingTab extends PluginSettingTab {
                 await this.plugin.updateSettings({ linkerActivated: value });
             })
         );
+
+        // Toggle to require the platform modifier (Cmd/Ctrl) for candidate-link clicks and hovers
+        new Setting(containerEl)
+            .setName('Require modifier key for candidate links')
+            .setDesc('When on, only modifier-held clicks and hovers activate virtual links. Disable to allow standalone clicks and hovers.')
+            .addToggle((toggle) =>
+                toggle.setValue(this.plugin.settings.requireModifierForCandidateLinks).onChange(async (value) => {
+                    await this.plugin.updateSettings({ requireModifierForCandidateLinks: value });
+                })
+            );
 
         // Toggle to show advanced settings
         new Setting(containerEl).setName('Show advanced settings').addToggle((toggle) =>
